@@ -1,0 +1,1997 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Void">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Void</title>
+<link rel="manifest" href="manifest.webmanifest" id="manifestLink">
+<meta name="theme-color" content="#14171a" id="themeColor">
+<script>try{var t=JSON.parse(localStorage.getItem("ticker:theme")||'"system"');if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<link rel="icon" type="image/png" sizes="256x256" href="icons/planet-256.png" id="favicon">
+<link rel="apple-touch-icon" sizes="256x256" href="icons/planet-256.png" id="touchicon">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: two-pane terminal — watchlist rail on the left, focused quote + trade ticket on the right; stacks on phones. */
+:root{
+  --bg:#f6f7f8; --surface:#ffffff; --fg:#14171a; --muted:#6b737c; --line:#e3e6e9;
+  --up:#0f8a5f; --down:#d1343e; --accent:#14171a; --chip:#eef0f2; --accent2:#6b4fd8; --amber:#b86e00; --blue:#2763c4;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d0f11; --surface:#15181b; --fg:#eceef0; --muted:#8a939c; --line:#24292e;
+  --up:#33c48d; --down:#ff5c66; --accent:#eceef0; --chip:#1d2125; --accent2:#a48cff; --amber:#f0a53a; --blue:#6aa5ff; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0d0f11; --surface:#15181b; --fg:#eceef0; --muted:#8a939c; --line:#24292e;
+  --up:#33c48d; --down:#ff5c66; --accent:#eceef0; --chip:#1d2125; --accent2:#a48cff; --amber:#f0a53a; --blue:#6aa5ff; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}   /* elements marked hidden stay hidden, whatever their layout rule says */
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--sans)}
+button,input{font:inherit;color:inherit}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)}
+.wrap{max-width:1180px;margin:0 auto;padding:calc(24px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+.mob-only{display:none}
+@media (max-width:820px){.mob-only{display:inline-block}}
+/* phones: a shorter cover, the Market / Alpaca switch as a bar at the bottom, no zoom when typing */
+@media (max-width:720px){
+  .hero{height:38vh;min-height:170px}
+  .wrap{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+  header .view-seg{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;grid-row:auto;grid-column:auto;box-shadow:0 6px 24px rgba(0,0,0,.35);background:var(--surface)}
+  header .view-seg button{padding:10px 26px;font-size:15px}
+  header{grid-template-columns:1fr auto}
+  input,textarea,select{font-size:16px}
+  .list .row{min-height:56px}
+}
+header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;margin-bottom:24px}
+header .status{justify-self:end}
+@media (max-width:720px){header{grid-template-columns:1fr auto}header .view-seg{grid-row:2;grid-column:1 / 3;justify-self:center}}
+.hero{display:flex;justify-content:center;align-items:center;height:50vh;min-height:220px;margin:-24px 0 0}
+.hero img{width:min(180px,32vh);height:min(180px,32vh);display:block;user-select:none;-webkit-user-drag:none}
+@media (max-width:720px){.hero img{width:min(120px,28vh);height:min(120px,28vh)}}
+.brand{font-weight:600;letter-spacing:-.01em;font-size:18px}
+.brand span{color:var(--muted);font-weight:400}
+.status{display:flex;gap:14px;align-items:center;color:var(--muted);font-size:13px;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px;vertical-align:1px}
+.dot.live{background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 25%,transparent)}
+.linkbtn{background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;font-size:13px}
+.grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+/* watchlist */
+.wl-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:14px 16px 10px}
+.wl-head > .small{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.wl-head .lg{white-space:nowrap}
+.wl-head .lg .sig{margin:0 4px 0 0}
+.add{display:flex;gap:8px;padding:0 16px 12px}
+.add input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:7px 10px;text-transform:uppercase}
+.add input::placeholder{text-transform:none}
+.add button,.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:7px 12px;cursor:pointer}
+.add button:hover,.btn:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer;position:relative}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--chip)}
+.row.sel{background:var(--chip)}
+.row.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--fg)}
+.row .sym{font-weight:600}
+.row .nm{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .px{text-align:right}
+.row .ch{text-align:right;font-size:12px}
+.row .rm{position:absolute;right:6px;top:4px;opacity:0;border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}
+.row:hover .rm,.row .rm:focus{opacity:1}
+.flash-up{animation:fu .8s} .flash-down{animation:fd .8s}
+@keyframes fu{from{background:color-mix(in srgb,var(--up) 18%,transparent)}}
+@keyframes fd{from{background:color-mix(in srgb,var(--down) 18%,transparent)}}
+@media (prefers-reduced-motion:reduce){.flash-up,.flash-down{animation:none}}
+/* detail */
+.detail{padding:22px 24px}
+.d-top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end}
+.d-sym{font-size:13px;color:var(--muted)}
+.d-name{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:2px 0 10px;text-wrap:balance}
+.d-price{font-size:44px;line-height:1;letter-spacing:-.02em}
+.d-chg{margin-top:8px;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+@media (max-width:520px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.d-price{font-size:36px}}
+.stats div .num{display:block;margin-top:3px}
+/* analyst signal */
+.sig{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;vertical-align:2px;margin-left:6px;background:var(--chip);color:var(--muted)}
+.sig.buy{background:color-mix(in srgb,var(--up) 15%,transparent);color:var(--up)}
+.sig.sell{background:color-mix(in srgb,var(--down) 15%,transparent);color:var(--down)}
+.sig.big{font-size:12px;padding:4px 10px;margin:0}
+.rec{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.rec-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.rec-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:12px 0 8px;background:var(--chip)}
+.rec-bar span{display:block;height:100%}
+.rec-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.rec-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+.sig.claude{background:transparent;box-shadow:inset 0 0 0 1.5px currentColor}
+.sig.fable{background:transparent;box-shadow:none;border:1.5px dashed currentColor;padding:1px 5px}
+.sig.max{background:transparent;box-shadow:none;border:3px double currentColor;padding:0 4px}
+.sig.big.fable{padding:3px 9px}
+.list .sig{font-size:9px;padding:2px 4px;margin-left:4px}
+.list .sig.fable{padding:1px 3px}
+.list .sig.max{padding:0 2px}
+.model-row{display:grid;grid-template-columns:90px auto minmax(0,1fr);gap:4px 12px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.model-row:first-of-type{border-top:0}
+.model-row .label{padding-top:5px}
+.model-row .c-reason{margin:0;grid-column:3}
+.model-row .small{grid-column:2 / 4}
+@media (max-width:520px){.model-row{grid-template-columns:auto minmax(0,1fr)}.model-row .c-reason,.model-row .small{grid-column:1 / 3}}
+.sig.claude:not(.buy):not(.sell){color:var(--muted)}
+.c-reason{margin:10px 0 4px;max-width:65ch}
+.horizon-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.seg.mini{margin:0;width:270px;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--line)}
+.seg.mini button{padding:5px;font-size:12px;color:var(--fg);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.seg.mini button:hover{background:var(--surface)}
+.seg.mini button.on{background:var(--fg);color:var(--bg);text-decoration:none;box-shadow:none}
+.seg.mini button:focus-visible{outline-offset:1px}
+.tr-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px}
+@media (max-width:620px){.tr-sum{grid-template-columns:1fr}}
+.tr-tile{background:var(--chip);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.tr-pct{font-size:26px;letter-spacing:-.02em}
+.tr-tbl th,.tr-tbl td{padding:7px 10px;font-size:13px}
+.tr-tbl th:first-child,.tr-tbl td:first-child{padding-left:0}
+.tr-tbl th:last-child,.tr-tbl td:last-child{padding-right:0}
+.tr-tbl tbody tr{cursor:default}
+.res{font-weight:600;font-size:12px}
+/* settings */
+.settings{padding:18px;margin-bottom:24px}
+.set-row{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.set-row label{font-weight:500;font-size:14px}
+.set-row input{border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+.set-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.set-actions .small{margin-right:auto}
+.icon-pick{border-top:1px solid var(--line);margin-top:14px;padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.icon-grid{display:flex;gap:10px;flex-wrap:wrap}
+.icon-opt{display:flex;flex-direction:column;align-items:center;gap:6px;width:92px;padding:10px 6px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer;font-size:12px}
+.icon-opt img{width:48px;height:48px;object-fit:contain}
+.icon-opt:hover{border-color:var(--muted)}
+.icon-opt.on{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg);font-weight:600}
+.move{border-top:1px solid var(--line);margin-top:14px;padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.move textarea{width:100%;min-height:70px;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12px;resize:vertical}
+.move-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.setup details{margin-top:18px}
+.setup summary{cursor:pointer;color:var(--muted);font-size:13px}
+.update-bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));background:var(--fg);color:var(--bg);font-size:14px}
+.update-bar .btn.primary{background:var(--bg);color:var(--fg);border-color:var(--bg);padding:5px 12px}
+.update-bar .linkbtn{color:var(--bg)}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.mood-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.mood-item{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mood-item .num{font-size:17px}
+.mood-item .small{line-height:1.35}
+.race{padding:22px 24px;margin-top:24px}
+.race-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px}
+@media (max-width:620px){.race-sum{grid-template-columns:1fr}}
+.race-tile{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.race-tile .num{font-size:22px;letter-spacing:-.01em}
+.race-ctl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:12px}
+.seg.race-seg{margin:0;display:inline-grid;grid-template-columns:repeat(4,auto);border:1px solid var(--line)}
+.seg.race-seg button{padding:5px 10px;font-size:12px;color:var(--fg)}
+.seg.race-seg button.on{background:var(--fg);color:var(--bg);box-shadow:none}
+.seg.theme-seg{margin:0;display:inline-grid;grid-template-columns:repeat(3,auto);border:1px solid var(--line);width:max-content}
+.seg.theme-seg button{padding:6px 14px;font-size:13px;color:var(--fg)}
+.seg.theme-seg button.on{background:var(--fg);color:var(--bg);box-shadow:none}
+.cost-ctl input{width:64px;margin:0 4px;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:4px 6px;font-family:var(--mono)}
+.race-tbl{margin-top:12px;font-size:13px}
+.race-tbl th,.race-tbl td{padding:6px 10px}
+.race-tbl th:first-child,.race-tbl td:first-child{padding-left:0}
+.race-tbl tr.sel td{font-weight:600}
+.race-tbl tbody tr{cursor:default}
+.race-tile .num.strat{font-family:var(--sans);font-size:17px;font-weight:600;letter-spacing:0}
+.alp-acct{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.seg.view-seg{margin:0;display:inline-grid;grid-template-columns:repeat(2,auto);border:1px solid var(--line)}
+.seg.view-seg button{padding:5px 16px;font-size:13px;color:var(--fg)}
+.seg.view-seg button.on{background:var(--fg);color:var(--bg);box-shadow:none}
+.alp-keys{display:grid;grid-template-columns:120px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center}
+.alp-keys input{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:6px;padding:7px 9px;font:13px var(--mono)}
+@media (max-width:620px){.alp-keys{grid-template-columns:1fr}}
+#alpChart{width:100%;height:230px;display:block;margin-top:14px}
+.alp-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12px;color:var(--muted)}
+.alp-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:14px}
+.meter{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+.meter b{color:var(--fg);font-weight:500;font-family:var(--mono)}
+.meter .bar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden;display:flex}
+.meter .bar i{display:block;height:100%}
+.race-tbl tr.why td{padding-top:0;color:var(--muted);font-size:12px;border-top:0;white-space:normal;max-width:0}
+.race-tbl tr.has-why td{border-bottom:0}
+.alp-sub{font-size:13px;font-weight:500;margin-top:18px}
+.alp-acct:first-child{border-top:0;margin-top:6px;padding-top:0}
+.alp-head{display:flex;align-items:center;gap:6px;font-size:14px}
+.alp-head .key{display:inline-block;width:18px;height:3px;border-radius:2px}
+.race-tile .key{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+#raceChart{width:100%;height:180px;display:block;margin-top:14px}
+#cgChart{width:100%;height:200px;display:block;margin-top:14px}
+.cg-sum{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:820px){.cg-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cg-more{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+.cg-more summary{cursor:pointer;font-size:13px;font-weight:500;padding:4px 0}
+.cg-more .race-tbl{margin-top:6px}
+.race-tbl td.sub{color:var(--muted);font-size:12px}
+.chart-wrap{margin-top:18px;position:relative}
+canvas{width:100%;height:240px;display:block}
+.chart-note{font-size:12px;color:var(--muted);margin-top:6px}
+.lower{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:24px;margin-top:24px}
+@media (max-width:980px){.lower{grid-template-columns:1fr}}
+/* ticket */
+.ticket{padding:18px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);border-radius:7px;padding:3px;margin:10px 0 14px}
+.seg button{border:0;background:none;padding:7px;border-radius:5px;cursor:pointer;font-weight:500;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.field{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.field input{width:110px;text-align:right;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 8px}
+.submit{width:100%;margin-top:14px;padding:11px;border:0;border-radius:7px;background:var(--fg);color:var(--bg);font-weight:600;cursor:pointer}
+.submit:disabled{opacity:.4;cursor:not-allowed}
+.msg{font-size:13px;margin-top:10px;min-height:1.2em}
+/* portfolio */
+.pf{padding:18px 0 6px}
+.pf-sum{display:flex;gap:28px;padding:0 18px 14px;flex-wrap:wrap}
+.pf-sum .num{font-size:20px;display:block;margin-top:2px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:9px 12px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+th{font-weight:500;color:var(--muted);font-size:12px}
+th:first-child,td:first-child{text-align:left;padding-left:18px}
+th:last-child,td:last-child{padding-right:18px}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)}
+.empty{padding:18px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+.hist{padding:0 18px 14px;font-size:13px;color:var(--muted);max-height:180px;overflow:auto}
+.hist div{display:flex;justify-content:space-between;gap:10px;padding:4px 0}
+/* setup */
+.setup{max-width:460px;margin:12vh auto 0;padding:28px}
+.setup h1{font-size:22px;margin:0 0 8px;letter-spacing:-.01em}
+.setup p{color:var(--muted);margin:0 0 18px}
+.setup input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:10px 12px;font-family:var(--mono);margin-bottom:12px}
+.setup a{color:var(--fg)}
+.small{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="update-bar" id="updateBar" hidden role="status">
+  <span id="updateMsg">Void has been updated.</span>
+  <button type="button" class="btn primary" id="updateReload">Reopen now</button>
+  <button type="button" class="linkbtn" id="updateLater">Later</button>
+</div>
+<div class="wrap">
+  <section id="setup" class="panel setup" hidden>
+    <h1>Connect live market data</h1>
+    <p>Void streams real US stock trades from Finnhub. Get a free API key at <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io/register</a> and paste it below. It is saved only in this browser.</p>
+    <form id="keyForm">
+      <input id="keyInput" placeholder="Finnhub API key" autocomplete="off" spellcheck="false" required>
+      <button class="submit" type="submit">Start tracking</button>
+    </form>
+    <div id="keyMsg" class="msg down"></div>
+    <details>
+      <summary>Moving from another copy of Void? Load your data instead</summary>
+      <div class="move" style="border-top:0;margin-top:8px;padding-top:0">
+        <textarea id="moveIn2" aria-label="Data from another copy of Void" placeholder="In the other copy, open Settings, click Copy my data, then paste it here."></textarea>
+        <div class="move-actions">
+          <button class="btn" type="button" id="moveLoad2">Load data</button>
+          <span class="small" id="moveLoadMsg2"></span>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <div id="app" hidden>
+    <div class="hero"><img id="heroIcon" src="icons/planet-512.png" alt="Void" width="180" height="180"></div>
+    <header>
+      <div class="brand">Void</div>
+      <div class="seg view-seg" id="viewSeg" role="tablist" aria-label="View">
+        <button type="button" role="tab" data-view="market">Market</button>
+        <button type="button" role="tab" data-view="alpaca">Alpaca</button>
+      </div>
+      <div class="status">
+        <span id="mkt"><span class="dot"></span>Market —</span>
+        <span id="conn"><span class="dot"></span>Connecting…</span>
+        <button class="linkbtn" id="openSettings" type="button" aria-expanded="false">Settings</button>
+      </div>
+    </header>
+
+    <section class="panel settings" id="settings" hidden>
+      <form id="settingsForm">
+        <div class="set-row">
+          <label for="setFinnhub">Finnhub key <span class="small">· live prices and analyst ratings (required)</span></label>
+          <input id="setFinnhub" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="set-row">
+          <label for="setAv">Alpha Vantage key <span class="small">· price history for grading past calls (optional, free at alphavantage.co)</span></label>
+          <input id="setAv" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="set-row">
+          <label for="setAnthropic">Anthropic API key <span class="small">· daily Buy / Hold / Sell picks from Claude (optional, from console.anthropic.com)</span></label>
+          <input id="setAnthropic" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="set-actions">
+          <span class="small">Keys are saved only in this browser. <span id="appVersion">Version Nov 7, 2026 (8) · updates itself from GitHub.</span> <button type="button" class="linkbtn" id="checkUpdate">Check for updates</button> <span id="updateStatus"></span></span>
+          <button class="btn" type="button" id="closeSettings">Cancel</button>
+          <button class="btn primary" type="submit">Save</button>
+        </div>
+        <div class="icon-pick">
+          <span style="font-weight:500;font-size:14px">Appearance</span>
+          <div class="seg theme-seg" id="themeSeg" role="radiogroup" aria-label="Appearance">
+            <button type="button" data-theme-pick="light" role="radio">Day</button>
+            <button type="button" data-theme-pick="dark" role="radio">Night</button>
+            <button type="button" data-theme-pick="system" role="radio">Match Windows</button>
+          </div>
+          <span class="small">Night mode switches straight away and is remembered on this computer.</span>
+        </div>
+        <div class="icon-pick">
+          <span style="font-weight:500;font-size:14px">Cloud tracker <span class="small">· GitHub runs Claude's calls every weekday after the close, even when Void is closed</span></span>
+          <div class="set-row" style="margin:0">
+            <label for="setRepo" class="small">Repository</label>
+            <input id="setRepo" autocomplete="off" spellcheck="false" placeholder="owner/name, for example aforre/Void">
+          </div>
+          <div class="set-row" style="margin:0">
+            <label for="setGhToken" class="small">GitHub token (fine-grained, this repository only, Contents: read and write)</label>
+            <input id="setGhToken" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+          </div>
+          <span class="small" id="cloudMsg">When both are filled in, Void shows the cloud tracker's calls and stops calling Claude itself, so you're never billed twice. Leave them empty to track from this browser.</span>
+        </div>
+        <div class="icon-pick">
+          <span style="font-weight:500;font-size:14px">Alpaca live view <span class="small">· the paper accounts straight from Alpaca, updated every few seconds</span></span>
+          <div class="alp-keys" id="alpKeyRows"></div>
+          <span class="small">Use the same paper-trading keys as the repository's GitHub secrets (ALPACA_KEY_ID, ALPACA_FABLE_KEY_ID, ALPACA_OPUSMAX_KEY_ID and their secret keys). They're saved only in this browser, and Void only reads the accounts: it never places orders from here. Alpaca shows a secret key only once; if you generate new keys, put them in the GitHub secrets too, or the tracker stops trading.</span>
+        </div>
+        <div class="icon-pick">
+          <span style="font-weight:500;font-size:14px">iPhone <span class="small">· set up Void on your phone by scanning a code instead of typing keys</span></span>
+          <div class="set-row" style="margin:0">
+            <label for="phoneUrl" class="small">Phone app address</label>
+            <input id="phoneUrl" autocomplete="off" spellcheck="false" placeholder="https://yourname.github.io/void-app/">
+          </div>
+          <div><button type="button" class="btn" id="phoneQrBtn">Show setup code</button></div>
+          <div id="phoneQr" hidden style="background:#fff;padding:14px;border-radius:10px;width:max-content;max-width:100%"></div>
+          <span class="small" id="phoneMsg">The code carries your keys (Finnhub, Alpha Vantage, GitHub token and Alpaca), so the phone needs no typing; the Anthropic key stays here. Scan it with the iPhone camera and open the link, then in Safari tap Share → Add to Home Screen. Only scan it with your own phone and don't screenshot it: it hides itself after two minutes.</span>
+        </div>
+        <div class="icon-pick">
+          <span style="font-weight:500;font-size:14px">App icon</span>
+          <div class="icon-grid" id="iconGrid" role="radiogroup" aria-label="App icon"></div>
+          <span class="small" id="iconMsg">The window icon changes straight away. The taskbar icon follows the next time Brave checks the app, which can take a day; reinstalling Void applies it immediately.</span>
+        </div>
+        <div class="move">
+          <label for="moveOut" style="font-weight:500;font-size:14px">Move my data <span class="small">· keys, watchlist, trades and call history, to another copy of Void</span></label>
+          <textarea id="moveOut" readonly placeholder="Click Copy my data, then paste it into the other copy of Void."></textarea>
+          <div class="move-actions">
+            <button class="btn" type="button" id="moveCopy">Copy my data</button>
+            <span class="small" id="moveCopyMsg">This includes your API keys. Only paste it into Void.</span>
+          </div>
+          <label for="moveIn" style="font-weight:500;font-size:14px;margin-top:6px">Load data from another copy</label>
+          <textarea id="moveIn" placeholder="Paste data copied from another copy of Void here."></textarea>
+          <div class="move-actions">
+            <button class="btn" type="button" id="moveLoad">Load data</button>
+            <span class="small" id="moveLoadMsg"></span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section id="alpView" hidden>
+      <section class="panel race" style="margin-top:0">
+        <div class="rec-head">
+          <span class="label" id="alpTitle">Alpaca paper trading</span>
+          <span class="small" id="alpStatus"></span>
+        </div>
+        <div id="alpSetup" class="small" style="margin-top:12px" hidden>Add your three Alpaca paper accounts' keys under <button type="button" class="linkbtn" id="alpOpenSettings">Settings → Alpaca live view</button> to see them here, live. Until then this shows what the tracker saved on its last run.</div>
+        <div class="race-ctl">
+          <div class="seg race-seg" id="alpRange" role="group" aria-label="Chart period"></div>
+          <button type="button" class="btn" id="alpRefresh">Refresh</button>
+        </div>
+        <div class="race-sum" id="alpTiles"></div>
+        <canvas id="alpChart" aria-label="Account value over time"></canvas>
+        <div class="alp-legend" id="alpLegend"></div>
+      </section>
+      <div id="alpCards"></div>
+    </section>
+
+    <div class="grid" id="marketView">
+      <aside class="panel">
+        <div class="wl-head"><span class="label">Watchlist</span><span class="small"><span class="lg"><span class="sig buy">A</span>analysts</span><span class="lg"><span class="sig buy claude">O</span>Opus</span><span class="lg"><span class="sig buy fable">F</span>Fable</span><span class="lg"><span class="sig buy claude max">M</span>Opus max</span></span></div>
+        <form class="add" id="addForm">
+          <input id="addInput" placeholder="Add symbol, e.g. AMD" maxlength="10" autocomplete="off" aria-label="Add symbol">
+          <button type="submit">Add</button>
+        </form>
+        <ul class="list" id="list"></ul>
+        <div class="small" id="wlNote" style="padding:10px 16px" hidden></div>
+      </aside>
+
+      <main style="min-width:0">
+        <section class="panel detail" id="detailPanel">
+          <button type="button" class="linkbtn mob-only" id="backToList" style="margin-bottom:10px">← Watchlist</button>
+          <div class="d-top">
+            <div>
+              <div class="d-sym" id="dSym">—</div>
+              <div class="d-name" id="dName">—</div>
+              <div class="d-price num" id="dPrice">—</div>
+              <div class="d-chg num" id="dChg">&nbsp;</div>
+            </div>
+            <div class="small" id="dUpdated" style="text-align:right"></div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart"></canvas>
+            <div class="chart-note">Live trades since you opened this page. Dashed line is the previous close.</div>
+          </div>
+          <div class="stats">
+            <div><span class="label">Open</span><span class="num" id="sO">—</span></div>
+            <div><span class="label">Day high</span><span class="num" id="sH">—</span></div>
+            <div><span class="label">Day low</span><span class="num" id="sL">—</span></div>
+            <div><span class="label">Prev close</span><span class="num" id="sP">—</span></div>
+          </div>
+          <div class="rec">
+            <div class="rec-head">
+              <span class="label">Crowd mood</span>
+              <span id="moodSig" class="sig big">—</span>
+            </div>
+            <div class="mood-grid" id="moodGrid"></div>
+            <div class="small" id="moodNote" style="margin-top:8px"></div>
+          </div>
+          <div class="rec">
+            <div class="rec-head">
+              <span class="label">Analyst consensus</span>
+              <span id="recSig" class="sig big">—</span>
+            </div>
+            <div class="rec-bar" id="recBar"></div>
+            <div class="rec-legend" id="recLegend">Loading analyst ratings…</div>
+            <div class="small" style="margin-top:8px">Based on Wall Street analyst ratings collected by Finnhub. Not financial advice.</div>
+          </div>
+          <div class="rec">
+            <div class="rec-head">
+              <span class="label">Claude's calls</span>
+              <span class="small" id="cWhich"></span>
+            </div>
+            <div id="cModels"></div>
+            <div class="small" id="cMeta" style="margin-top:6px"></div>
+          </div>
+          <div class="rec">
+            <div class="rec-head">
+              <span class="label">Track record</span>
+              <div class="horizon-wrap">
+                <span class="small">Grade calls over</span>
+                <div class="seg mini" id="horizon" role="group" aria-label="Grade calls over">
+                  <button type="button" data-h="day">1 day</button>
+                  <button type="button" data-h="week">1 week</button>
+                  <button type="button" data-h="month">1 month</button>
+                </div>
+              </div>
+            </div>
+            <div class="tr-sum">
+              <div class="tr-tile"><span class="label">Analysts · this stock</span><span class="num tr-pct" id="trA">—</span><span class="small" id="trAn"></span></div>
+              <div class="tr-tile"><span class="label">Opus 5.5 · this stock</span><span class="num tr-pct" id="trO">—</span><span class="small" id="trOn"></span></div>
+              <div class="tr-tile"><span class="label">Fable 5.1 · this stock</span><span class="num tr-pct" id="trF">—</span><span class="small" id="trFn"></span></div>
+              <div class="tr-tile"><span class="label">Opus 5.5 max · this stock</span><span class="num tr-pct" id="trM">—</span><span class="small" id="trMn"></span></div>
+            </div>
+            <div class="small" id="trAll" style="margin-top:10px"></div>
+            <div class="small" id="trConf" style="margin-top:4px"></div>
+            <div class="tbl-wrap" style="margin-top:12px">
+              <table class="tr-tbl">
+                <thead><tr><th>Date</th><th>Source</th><th>Call</th><th>Conf.</th><th>Stock</th><th>S&amp;P 500</th><th>Vs S&amp;P</th><th>Result</th></tr></thead>
+                <tbody id="trRows"></tbody>
+              </table>
+            </div>
+            <div class="small" id="trNote" style="margin-top:10px"></div>
+          </div>
+        </section>
+
+        <section class="panel race" id="race">
+          <div class="rec-head">
+            <span class="label">Paper race</span>
+            <span class="small" id="raceWhen"></span>
+          </div>
+          <div class="race-ctl" id="raceCtl"></div>
+          <div class="race-sum" id="raceSum"></div>
+          <canvas id="raceChart" aria-label="Paper portfolio value over time"></canvas>
+          <div class="tbl-wrap" id="raceTable"></div>
+          <div class="small" id="raceAbout" style="margin-top:10px"></div>
+          <div class="small" id="raceMarket" style="margin-top:4px"></div>
+          <div class="small" style="margin-top:6px">Approximate paper trading: costs are an estimate you can change, money is fully reinvested, and taxes or margin rules are ignored. The S&amp;P 500 line holds the index over the same periods.</div>
+        </section>
+
+        <section class="panel race" id="alpacaPanel" hidden>
+          <div class="rec-head">
+            <span class="label">Alpaca paper trading</span>
+            <span class="small" id="alpWhen"></span>
+          </div>
+          <div id="alpBody"></div>
+          <div class="small" id="alpLimits" style="margin-top:10px"></div>
+        </section>
+
+        <section class="panel race" id="btPanel" hidden>
+          <div class="rec-head">
+            <span class="label">Backtest · replayed past days</span>
+            <span class="small" id="btWhen"></span>
+          </div>
+          <div class="race-ctl" id="btCtl"></div>
+          <div class="race-sum" id="btSum"></div>
+          <canvas id="btChart" aria-label="Backtest paper portfolio value over time"></canvas>
+          <div class="tbl-wrap" id="btTable"></div>
+          <div class="small" id="btAbout" style="margin-top:10px"></div>
+          <div class="small" id="btAcc" style="margin-top:4px"></div>
+          <div class="small" id="btMarket" style="margin-top:4px"></div>
+          <div class="small" style="margin-top:6px">Both models replayed past trading days after their training cutoff, seeing only the data that existed on each day (prices, crowd signals, base rates, headlines, earnings dates) with no web search, and making next-day calls from each day's close. Same paper-trading rules as the live race. The backtest only made next-day calls, so it has no Weekly result. Kept separate from the live record.</div>
+        </section>
+
+        <section class="panel race" id="cgPanel" hidden>
+          <div class="rec-head">
+            <span class="label">Congress trades · copying what members report</span>
+            <span class="small" id="cgWhen"></span>
+          </div>
+          <div class="race-ctl" id="cgCtl"></div>
+          <div class="race-sum cg-sum" id="cgSum"></div>
+          <canvas id="cgChart" aria-label="Copy-trading portfolios against the S&amp;P 500 and Nasdaq 100"></canvas>
+          <div class="tbl-wrap" id="cgTable"></div>
+          <div class="small" id="cgNote" style="margin-top:6px"></div>
+          <div id="cgLists"></div>
+          <div class="small" id="cgAbout" style="margin-top:10px"></div>
+        </section>
+
+        <div class="lower">
+          <section class="panel pf">
+            <div class="pf-sum">
+              <div><span class="label">Account value</span><span class="num" id="pVal">—</span></div>
+              <div><span class="label">Cash</span><span class="num" id="pCash">—</span></div>
+              <div><span class="label">Total return</span><span class="num" id="pRet">—</span></div>
+            </div>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr><th>Symbol</th><th>Shares</th><th>Avg cost</th><th>Price</th><th>Value</th><th>P/L</th></tr></thead>
+                <tbody id="pos"></tbody>
+              </table>
+            </div>
+            <div class="empty" id="posEmpty">No positions yet. Pick a stock and place a buy order.</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px 8px;border-top:1px solid var(--line)">
+              <span class="label">Order history</span>
+              <button class="linkbtn" id="resetPf" type="button">Reset account</button>
+            </div>
+            <div class="hist" id="hist"></div>
+          </section>
+
+          <section class="panel ticket">
+            <span class="label">Order ticket</span>
+            <div class="seg" role="tablist">
+              <button type="button" id="sideBuy" class="on">Buy</button>
+              <button type="button" id="sideSell">Sell</button>
+            </div>
+            <div class="field"><span>Symbol</span><span class="num" id="tSym">—</span></div>
+            <div class="field"><label for="qty">Shares</label><input id="qty" class="num" type="number" min="0" step="1" value="1"></div>
+            <div class="field"><span>Market price</span><span class="num" id="tPx">—</span></div>
+            <div class="field"><span>Estimated total</span><span class="num" id="tTot">—</span></div>
+            <div class="field"><span id="tAvailL">Buying power</span><span class="num" id="tAvail">—</span></div>
+            <button class="submit" id="place" type="button">Buy</button>
+            <div class="msg" id="tMsg"></div>
+            <div class="small" style="margin-top:8px">Simulated orders with virtual money. No real trades are placed.</div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+/*! QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase, MIT license, https://github.com/kazuhikoarase/qrcode-generator */
+var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,(function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1}))},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(){var t=n("友");if(2!=t.length||38726!=(t[0]<<8|t[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}((function(){return qrcode}));
+</script>
+<script>
+(() => {
+const API = "https://finnhub.io/api/v1";
+const START_CASH = 100000;
+const DEFAULT_WL = ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA"];
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("ticker:"+k); return v==null? d : JSON.parse(v);}catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem("ticker:"+k, JSON.stringify(v)); }catch{} }
+};
+const fmt = (n, d=2) => n==null||isNaN(n) ? "—" : n.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = n => n==null||isNaN(n) ? "—" : (n<0?"-$":"$")+fmt(Math.abs(n));
+const sgn = (n, s="") => (n>0?"+":n<0?"−":"")+fmt(Math.abs(n))+s;
+const cls = n => n>0?"up":n<0?"down":"";
+
+// A phone opened from the setup code: take the keys from the link (they're after #, so they never reach a server)
+(function phoneSetup(){
+  const m = /^#setup=([A-Za-z0-9_-]+)$/.exec(location.hash); if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);   // don't leave the keys in the address bar
+  try{
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/"), bin = atob(b64 + "=".repeat((4 - b64.length % 4) % 4));
+    const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+    if (d.v !== 1) return;
+    if (store.get("key", "") && !confirm("Replace the keys on this phone with the ones from your PC?")) return;
+    for (const k of ["key", "avkey", "cloudRepo", "cloudToken", "alpacaKeys", "icon", "theme"]) if (d[k] != null && d[k] !== "") store.set(k, d[k]);
+    store.set("phoneSetupAt", new Date().toISOString());
+  }catch{}
+})();
+let key = store.get("key", "");
+let watch = store.get("watch", DEFAULT_WL);
+// One-time addition of high-volatility stocks and futures-tracking funds; removing one later sticks
+const VOLATILE_PICKS = ["MSTR","COIN","SMCI","UNG","USO","UVXY"];
+if (!store.get("addedVolatile1", false)){
+  for (const s of VOLATILE_PICKS) if (!watch.includes(s)) watch.push(s);
+  store.set("watch", watch); store.set("addedVolatile1", true);
+}
+// Funds have no company profile, so name them plainly (these names also go to Claude)
+const FUND_NAMES = {
+  UNG: "Natural gas futures fund",
+  USO: "Crude oil futures fund",
+  UVXY: "VIX futures fund, 1.5x leveraged, loses value over time by design",
+  IBIT: "Bitcoin fund", TQQQ: "Nasdaq-100 3x leveraged fund", SOXL: "Semiconductor 3x leveraged fund"
+};
+let pf = store.get("pf", {cash:START_CASH, pos:{}, hist:[]});
+let sel = store.get("sel", watch[0] || "AAPL");
+let side = "buy";
+const Q = {};      // symbol -> {c,d,dp,h,l,o,pc,t}
+const names = {};  // symbol -> company name
+const ticks = {};  // symbol -> [[ms, price]]
+let ws = null, wsLive = false, lastMsg = 0, pollTimer = null;
+
+// ---------- API ----------
+async function api(path){
+  const r = await fetch(`${API}${path}${path.includes("?")?"&":"?"}token=${encodeURIComponent(key)}`);
+  if (r.status === 401 || r.status === 403) throw new Error("auth");
+  if (r.status === 429) throw new Error("rate");
+  if (!r.ok) throw new Error("http "+r.status);
+  return r.json();
+}
+async function loadQuote(s){
+  const q = await api(`/quote?symbol=${encodeURIComponent(s)}`);
+  if (!q || !q.c) return null;
+  const prev = Q[s]?.c;
+  // keep a live websocket price if it's newer than the REST snapshot
+  if (Q[s] && Q[s].live && Q[s].lt > q.t*1000) { Object.assign(Q[s], {o:q.o,h:Math.max(q.h,Q[s].h||0),l:Math.min(q.l,Q[s].l||Infinity),pc:q.pc}); }
+  else Q[s] = {...q, lt:q.t*1000};
+  recordSnap(s, q.c, q.t*1000);
+  recalc(s); pushTick(s, Q[s].c, Date.now()); render(s, prev);
+  return q;
+}
+async function loadName(s){
+  if (names[s]) return;
+  if (FUND_NAMES[s]){ names[s] = FUND_NAMES[s]; renderList(); if (s===sel) renderDetail(); return; }
+  try{ const p = await api(`/stock/profile2?symbol=${encodeURIComponent(s)}`); names[s] = p && p.name ? p.name : s; }
+  catch{ names[s] = s; }
+  renderList(); if (s===sel) renderDetail();
+}
+const recs = {};   // symbol -> latest analyst recommendation period, or null if none
+async function loadRec(s){
+  if (s in recs) return;
+  let a;
+  try{ a = await api(`/stock/recommendation?symbol=${encodeURIComponent(s)}`); recs[s] = Array.isArray(a) && a.length ? a[0] : null; }
+  catch{ return; }
+  // Log every monthly consensus Finnhub returns as a dated analyst call
+  for (const r of (Array.isArray(a) ? a : [])){ const g = signal(r); if (g && r.period) addCall({src:"analyst", s, date:r.period, sig:g.label}); }
+  saveCalls();
+  renderList(); if (s===sel){ renderRec(); renderTrack(); }
+}
+
+// ---------- call log + price history ----------
+let calls = store.get("calls", []);          // [{src:"analyst"|"claude", s, date, sig, px?, spx?, reason?}]
+const snaps = store.get("snaps", {});        // sym -> {date: last seen price that day}
+const closes = store.get("closes", {});      // sym -> {fetched, series:{date: close}}
+let horizon = store.get("horizon", "month");
+let avKey = store.get("avkey", ""), aKey = store.get("akey", "");
+const cloudRepo = store.get("cloudRepo", ""), cloudToken = store.get("cloudToken", "");
+const cloudMode = !!(cloudRepo && cloudToken);
+let cloudState = null, cloudStatus = "", btData = null, cgData = null, cgRange = store.get("cgRange", "all");
+const BENCH = "SPY";                         // S&P 500 ETF used as the benchmark
+const H = { day:{days:1, band:0.5, label:"1 day"}, week:{days:7, band:1, label:"1 week"}, month:{days:30, band:2, label:"1 month"} };
+const isWeekend = d => { const w = new Date(d+"T12:00:00Z").getUTCDay(); return w===0 || w===6; };
+const nyMinutes = () => { const [h, m] = new Date().toLocaleTimeString("en-US", {timeZone:"America/New_York", hour12:false, hour:"2-digit", minute:"2-digit"}).split(":").map(Number); return (h % 24)*60 + m; };
+// Most recent trading day whose closing price should exist (US close 4:00 pm New York, data settles by ~4:30)
+function lastSession(){
+  let d = nyDate(Date.now());
+  if (isWeekend(d) || nyMinutes() < 16*60 + 30) d = addDays(d, -1);
+  while (isWeekend(d)) d = addDays(d, -1);
+  return d;
+}
+// Which Claude calls belong to which view (calls made before daily calls existed are one-month calls)
+const callH = c => c.h || "month";
+// Two Claude models make calls on identical data; calls from before the comparison are Opus 5.5
+const MODELS = [{key:"opus", label:"Opus 5.5", cls:"claude", color:"--up", tr:"trO", slot:"alpaca"}, {key:"fable", label:"Fable 5.1", cls:"claude fable", color:"--accent2", tr:"trF", slot:"alpaca2"}, {key:"opusmax", label:"Opus 5.5 max", cls:"claude max", color:"--amber", tr:"trM", slot:"alpaca3"}];
+const modelOf = c => c.m || "opus";
+// Claude calls before this date were a practice day (made after the close, on an older setup): shown, but not counted
+const COUNT_FROM = "2026-11-06";
+const isPractice = c => c.src === "claude" && !c.bt && c.date < COUNT_FROM;
+const modelInfo = c => MODELS.find(m => m.key === modelOf(c)) || MODELS[0];
+const inView = (c, h) => c.src !== "claude" || callH(c) === h;
+const nyDate = ms => new Date(ms).toLocaleDateString("en-CA", {timeZone:"America/New_York"});
+const addDays = (d, n) => { const t = new Date(d+"T12:00:00Z"); t.setUTCDate(t.getUTCDate()+n); return t.toISOString().slice(0,10); };
+const shortDate = d => new Date(d+"T12:00:00Z").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"2-digit",timeZone:"UTC"});
+function addCall(c){
+  if (calls.some(x => x.src===c.src && (x.m||"")===(c.m||"") && x.s===c.s && x.date===c.date && (x.h||"")===(c.h||""))) return false;
+  calls.push(c); return true;
+}
+function saveCalls(){ if (cloudMode) return; if (calls.length > 3000) calls = calls.slice(-3000); store.set("calls", calls); }
+function recordSnap(s, price, ms){
+  if (!price) return; (snaps[s] || (snaps[s] = {}))[nyDate(ms)] = price;
+}
+// First known price on or after `date`, from daily closes, then from prices this app has seen
+function priceOn(s, date){
+  const m = {...(snaps[s]||{}), ...(closes[s]?.series||{})};
+  let best = null;
+  for (const d in m) if (d >= date && (!best || d < best)) best = d;
+  // Only accept a price within 3 days of the date asked for (covers weekends and holidays).
+  // Anything later would grade a call with the wrong prices.
+  if (!best || best > addDays(date, 3)) return null;
+  return {date:best, px:m[best]};
+}
+function grade(c, h){
+  const {days, band} = H[h], today = nyDate(Date.now());
+  let start = c.date; while (isWeekend(start)) start = addDays(start, 1);   // e.g. analyst ratings dated on a weekend
+  let end = addDays(start, days); while (isWeekend(end)) end = addDays(end, 1);
+  const p0 = c.px ? {px:c.px, date:c.date} : priceOn(c.s, c.date);
+  const b0 = c.spx ? {px:c.spx, date:c.date} : priceOn(BENCH, c.date);
+  if (!p0) return {state:"nodata"};
+  const done = end < today || (end === today && nyMinutes() >= 16*60 + 15);
+  const p1 = done ? priceOn(c.s, end) : (Q[c.s]?.c ? {px:Q[c.s].c} : null);
+  const b1 = done ? priceOn(BENCH, end) : (Q[BENCH]?.c ? {px:Q[BENCH].c} : null);
+  if (!p1) return {state: done ? "nodata" : "pending", end};
+  const ret = (p1.px/p0.px - 1)*100;
+  const bret = b0 && b1 ? (b1.px/b0.px - 1)*100 : null;
+  if (c.kind === "market"){ const outcome = ret > 0 ? "Up" : "Down"; return {state: done ? "graded" : "pending", end, ret, bret: ret, ex: ret, outcome, ok: outcome===c.sig}; }
+  const ex = bret==null ? ret : ret - bret;
+  const outcome = ex > band ? "Buy" : ex < -band ? "Sell" : "Hold";
+  return {state: done ? "graded" : "pending", end, ret, bret, ex, outcome, ok: outcome===c.sig};
+}
+function tally(list, h){
+  let ok = 0, n = 0;
+  for (const c of list){ const g = grade(c, h); if (g.state==="graded"){ n++; if (g.ok) ok++; } }
+  return {ok, n, pct: n ? ok/n*100 : null};
+}
+
+async function fetchCloses(){
+  if (!avKey || cloudMode) return;
+  const today = nyDate(Date.now()), sess = lastSession();
+  for (const s of [BENCH, ...watch]){
+    if (closes[s]?.session === sess && closes[s].vols) continue;
+    try{
+      const r = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&outputsize=compact&symbol=${encodeURIComponent(s)}&apikey=${encodeURIComponent(avKey)}`);
+      const j = await r.json(); const ts = j["Time Series (Daily)"];
+      if (!ts){ histStatus = j["Information"] || j["Note"] || j["Error Message"] ? "Alpha Vantage daily limit reached. Price history will finish loading tomorrow." : "Could not load price history."; break; }
+      const series = {}, vols = {}; for (const d in ts){ series[d] = +ts[d]["4. close"]; vols[d] = +ts[d]["5. volume"]; }
+      closes[s] = {fetched: today, session: sess, series, vols}; store.set("closes", closes); histStatus = "";
+    }catch{ histStatus = "Could not reach Alpha Vantage."; break; }
+    renderTrack();
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  renderTrack();
+}
+let histStatus = "";
+
+// ---------- crowd psychology ----------
+const insiders = {};   // symbol -> {change, mspr, months} | null (no data)
+let fear = null;       // {level, src:"VIX"|"est"}
+async function loadInsider(s){
+  if (s in insiders) return;
+  const to = nyDate(Date.now()), from = addDays(to, -120);
+  try{
+    const j = await api(`/stock/insider-sentiment?symbol=${encodeURIComponent(s)}&from=${from}&to=${to}`);
+    const d = (j.data || []).sort((a,b) => (a.year*12+a.month) - (b.year*12+b.month)).slice(-3);
+    insiders[s] = d.length ? {change: d.reduce((a,x) => a + x.change, 0), mspr: d.reduce((a,x) => a + x.mspr, 0)/d.length, months: d.length} : null;
+  }catch{ return; }
+  if (s===sel) renderMood();
+}
+// Daily closes (plus today's live price when newer) oldest first
+function pxSeries(s){
+  const ser = closes[s]?.series; if (!ser) return null;
+  const ds = Object.keys(ser).sort(), px = ds.map(d => ser[d]);
+  const q = Q[s]; if (q?.c && q.lt && nyDate(q.lt) > ds[ds.length-1]) px.push(q.c);
+  return {ds, px};
+}
+function realizedVol(s){
+  const r = pxSeries(s); if (!r || r.px.length < 22) return null;
+  const p = r.px.slice(-21), rets = p.slice(1).map((v,i) => Math.log(v/p[i]));
+  const m = rets.reduce((a,b)=>a+b,0)/rets.length;
+  return Math.sqrt(rets.reduce((a,b)=>a+(b-m)**2,0)/(rets.length-1)) * Math.sqrt(252) * 100;
+}
+async function loadFear(){
+  try{ const q = await api(`/quote?symbol=${encodeURIComponent("^VIX")}`); if (q && q.c){ fear = {level:q.c, src:"VIX"}; renderMood(); return; } }catch{}
+  const v = realizedVol(BENCH); if (v != null){ fear = {level:v, src:"est"}; renderMood(); }
+}
+const fearLabel = v => v < 15 ? "Calm" : v < 20 ? "Normal" : v < 30 ? "Nervous" : "Fearful";
+function crowd(s){
+  const out = {};
+  const r = pxSeries(s);
+  if (r && r.px.length >= 21){
+    const px = r.px;
+    // RSI(14), Wilder smoothing over the whole series
+    let g = 0, l = 0;
+    for (let i = 1; i <= 14; i++){ const d = px[i]-px[i-1]; if (d > 0) g += d; else l -= d; }
+    g /= 14; l /= 14;
+    for (let i = 15; i < px.length; i++){ const d = px[i]-px[i-1]; g = (g*13 + Math.max(d,0))/14; l = (l*13 + Math.max(-d,0))/14; }
+    out.rsi = l === 0 ? 100 : 100 - 100/(1 + g/l);
+    const last20 = px.slice(-20), sma = last20.reduce((a,b)=>a+b,0)/20;
+    out.vsAvg = (px[px.length-1]/sma - 1)*100;
+    out.mood = out.rsi >= 70 ? "Euphoric" : out.rsi >= 60 ? "Optimistic" : out.rsi > 40 ? "Neutral" : out.rsi > 30 ? "Anxious" : "Fearful";
+  }
+  const vols = closes[s]?.vols;
+  if (vols){
+    const vd = Object.keys(vols).sort(), v = vd.map(d => vols[d]);
+    if (v.length >= 21){ const avg = v.slice(-21,-1).reduce((a,b)=>a+b,0)/20; out.volRatio = avg ? v[v.length-1]/avg : null; out.volDate = vd[vd.length-1]; }
+  }
+  out.ins = insiders[s];
+  return out;
+}
+function crowdText(s){
+  const c = crowd(s), bits = [];
+  if (c.rsi != null) bits.push(`RSI(14) ${c.rsi.toFixed(0)}${c.rsi>=70?" (overbought)":c.rsi<=30?" (oversold)":""}`, `${Math.abs(c.vsAvg).toFixed(1)}% ${c.vsAvg>=0?"above":"below"} its 20-day average`);
+  if (c.volRatio != null) bits.push(`latest daily volume ${c.volRatio.toFixed(1)}x its 20-day average`);
+  if (c.ins) bits.push(`insiders net ${c.ins.change>=0?"buyers":"sellers"} over the last ${c.ins.months} months (MSPR ${c.ins.mspr.toFixed(0)} on a -100 to 100 scale)`);
+  return bits.length ? bits.join("; ") : "not available";
+}
+function renderMood(){
+  if (!$("moodGrid")) return;
+  const c = crowd(sel), el = $("moodSig");
+  el.className = "sig big" + (c.mood==="Euphoric"||c.mood==="Optimistic" ? " buy" : c.mood==="Anxious"||c.mood==="Fearful" ? " sell" : "");
+  el.textContent = c.mood || "—";
+  const item = (label, value, sub, klass="") => `<div class="mood-item"><span class="label">${label}</span><span class="num ${klass}">${value}</span><span class="small">${sub}</span></div>`;
+  const items = [];
+  items.push(c.rsi != null
+    ? item("Momentum (RSI)", c.rsi.toFixed(0), c.rsi>=70 ? "Overbought: buyers may be overexcited" : c.rsi<=30 ? "Oversold: sellers may be overdoing it" : "Between 30 (oversold) and 70 (overbought)", c.rsi>=70?"up":c.rsi<=30?"down":"")
+    : item("Momentum (RSI)", "—", avKey ? "Loading price history…" : "Needs an Alpha Vantage key"));
+  items.push(c.vsAvg != null
+    ? item("Vs 20-day average", sgn(c.vsAvg,"%"), Math.abs(c.vsAvg) > 8 ? "Stretched far from its recent norm" : "Close to its recent norm", cls(c.vsAvg))
+    : item("Vs 20-day average", "—", avKey ? "Loading price history…" : "Needs an Alpha Vantage key"));
+  items.push(c.volRatio != null
+    ? item("Trading volume", c.volRatio.toFixed(1)+"×", (c.volRatio >= 1.8 ? "Unusually heavy" : c.volRatio <= 0.6 ? "Unusually light" : "Normal") + ` vs 20-day average (${shortDate(c.volDate)})`)
+    : item("Trading volume", "—", avKey ? "Loading price history…" : "Needs an Alpha Vantage key"));
+  items.push(c.ins
+    ? item("Insiders, 3 months", sgn(c.ins.mspr).replace(/\.\d+$/,""), `${c.ins.change>=0 ? "Net buying" : "Net selling"}. Scale runs from −100 (all selling) to +100 (all buying)`, c.ins.change>=0?"up":"down")
+    : item("Insiders, 3 months", "—", sel in insiders ? "No insider trades reported" : "Loading…"));
+  items.push(fear
+    ? item("Market fear", fear.level.toFixed(1), `${fearLabel(fear.level)}. ` + (fear.src==="VIX" ? "VIX index: under 15 calm, over 30 fearful" : "Estimated from S&P 500 swings, on the VIX scale"), fear.level>=30?"down":"")
+    : item("Market fear", "—", "Loading…"));
+  $("moodGrid").innerHTML = items.join("");
+  $("moodNote").textContent = "Mood is based on momentum: Euphoric above RSI 70, Fearful below 30. Extreme moods often reverse, so treat them as a caution sign, not a signal to follow the crowd.";
+}
+
+// ---------- Claude's daily picks ----------
+let claudeStatus = "", claudeBusy = false, closesLoading = false, lastRun = null, pricesReady = false;
+const latestClaude = (s, h = horizon, m = "opus") => calls.filter(c => c.src==="claude" && !c.kind && modelOf(c)===m && c.s===s && callH(c)===h).sort((a,b)=> a.date<b.date?1:-1)[0];
+async function askClaude(){
+  if (cloudMode || !aKey || claudeBusy || closesLoading || !pricesReady) return;
+  const today = nyDate(Date.now());
+  if (isWeekend(today)) return;   // markets are closed; weekend calls would just repeat Friday's
+  const todo = watch.filter(s => Q[s]?.c && !calls.some(c => c.src==="claude" && c.s===s && c.date===today));
+  if (!todo.length) return;
+  // Cost guard: at most 3 attempts per day, at least an hour apart, so a failing request is never re-billed every 30 seconds
+  const tries = store.get("claudeTries", {date:"", n:0, last:0});
+  if (tries.date !== today){ tries.date = today; tries.n = 0; tries.last = 0; }
+  if (tries.n >= 3 || Date.now() - tries.last < 60*60*1000) return;
+  tries.n++; tries.last = Date.now(); store.set("claudeTries", tries);
+  claudeBusy = true; claudeStatus = `Asking Claude about ${todo.join(", ")}…`; renderClaude();
+  try{
+    const from = addDays(today, -7);
+    const lines = [];
+    for (const s of todo){
+      const q = Q[s]; let news = [];
+      try{ news = (await api(`/company-news?symbol=${encodeURIComponent(s)}&from=${from}&to=${today}`)).slice(0,6).map(n => "- " + n.headline); }catch{}
+      const hist = closes[s]?.series ? Object.entries(closes[s].series).sort().slice(-30).map(([d,v]) => `${d.slice(5)} ${v}`).join(", ") : "not available";
+      lines.push(`## ${s} (${names[s]||s})\nPrice ${q.c} · today ${fmt(q.dp)}% · open ${q.o} · high ${q.h} · low ${q.l} · prev close ${q.pc}\nRecent daily closes: ${hist}\nCrowd signals: ${crowdText(s)}\nHeadlines from the past week:\n${news.join("\n") || "- none found"}`);
+    }
+    const SCHEMA = {
+      type: "object", additionalProperties: false, required: ["picks"],
+      properties: { picks: { type: "array", items: {
+        type: "object", additionalProperties: false, required: ["symbol","day","week","month","reason"],
+        properties: { symbol:{type:"string"}, day:{type:"string", enum:["Buy","Hold","Sell"]}, week:{type:"string", enum:["Buy","Hold","Sell"]}, month:{type:"string", enum:["Buy","Hold","Sell"]}, reason:{type:"string"} } } } } };
+    const body = {
+      model: "claude-opus-5-5",
+      max_tokens: 16000,
+      fallbacks: "default",
+      output_config: { effort: "high" },
+      tools: [
+        { type: "web_search_20260209", name: "web_search", max_uses: Math.min(20, todo.length * 2) },
+        { name: "submit_picks", description: "Submit your final next-day, next-week and next-month Buy / Hold / Sell calls for every stock. Call this exactly once, after your research, with one entry per stock.", strict: true, input_schema: SCHEMA }
+      ],
+      system: "You are a disciplined trader and equity analyst making calls that will be scored. For each stock, make three calls, each judged against the S&P 500 over its own period: day = from now to the close of the next trading day, Buy if you expect it to beat the S&P 500 by more than 0.5 percentage points, Sell if you expect it to trail by more than 0.5, Hold otherwise; week = the next 7 days, with a 1 point margin; month = the next 30 days, with a 2 point margin. The three calls can differ: a stock can be due for a pullback tomorrow and still be a Buy for the month. For the next-day call, focus on short-term patterns: recent momentum or overextension, gaps and reversals in the last few sessions, unusual volume, news and earnings timing, and overall market fear. Use the market data, crowd signals and headlines provided plus what you know about each company. Use web search to check for recent news, earnings dates, guidance changes, analyst moves and market sentiment that the provided data might miss; keep searches focused and skip them for a stock when the provided data is enough. Weigh market psychology: momentum and news sentiment can carry a stock for a while, but extreme readings (RSI above 70 or below 30, unusually heavy volume, very high or very low market fear) often come before reversals. Insider net buying is a meaningful positive sign; insider selling is weaker evidence because insiders sell for many reasons. Do not default to Buy; call Sell or Hold whenever the evidence points there. Give one plain sentence of reasoning, under 35 words, for each stock, mentioning what drives the next-day call. When you are done, call submit_picks once with every stock.",
+      messages: [{ role: "user", content: `Date: ${today}. S&P 500 (SPY) price: ${Q[BENCH]?.c ?? "unknown"}. Market fear gauge: ${fear ? fear.level.toFixed(1) + (fear.src==="VIX" ? " (VIX)" : " (estimated from S&P 500 volatility, VIX scale)") + ", " + fearLabel(fear.level).toLowerCase() : "unknown"}.\n\n${lines.join("\n\n")}\n\nResearch as needed, then call submit_picks with next-day, next-week and next-month calls for each of: ${todo.join(", ")}.` }]
+    };
+    let j, cost = 0, searches = 0;
+    // Web search runs a server-side loop; if it pauses (pause_turn), send the turn back so it can resume
+    for (let hop = 0; hop < 4; hop++){
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": aKey,
+          "anthropic-version": "2026-10-21",
+          "anthropic-beta": "server-side-fallback-2026-07-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify(body)
+      });
+      j = await r.json();
+      if (!r.ok){
+        claudeStatus = r.status===401 ? "Anthropic rejected that API key. Check it in Settings."
+          : r.status===429 ? "Anthropic rate limit reached. Claude will try again later."
+          : r.status===400 && /credit/i.test(j?.error?.message||"") ? "Your Anthropic account is out of credits."
+          : "Claude request failed: " + (j?.error?.message || r.status);
+        return;
+      }
+      const u = j.usage || {};
+      const n = u.server_tool_use?.web_search_requests || 0; searches += n;
+      // Approximate list prices for Claude Opus 5.5: $4 / M input, $20 / M output, $0.20 / M cache reads, $10 per 1,000 searches
+      cost += (u.input_tokens||0)*4e-6 + (u.cache_creation_input_tokens||0)*5e-6 + (u.cache_read_input_tokens||0)*0.2e-6 + (u.output_tokens||0)*20e-6 + n*0.01;
+      if (j.stop_reason !== "pause_turn") break;
+      body.messages.push({ role: "assistant", content: j.content });
+    }
+    const log = store.get("claudeCost", {}); log[today] = (log[today]||0) + cost; store.set("claudeCost", log);
+    lastRun = {cost, searches};
+    if (j.stop_reason === "refusal"){ claudeStatus = "Claude declined to make picks this time."; return; }
+    const sub = (j.content || []).find(b => b.type==="tool_use" && b.name==="submit_picks");
+    if (!sub){ throw new Error("no picks submitted"); }
+    const picks = sub.input?.picks || [];
+    for (const p of picks){
+      const s = String(p.symbol).toUpperCase();
+      if (!todo.includes(s)) continue;
+      for (const h of ["day","week","month"]){
+        if (!["Buy","Hold","Sell"].includes(p[h])) continue;
+        addCall({src:"claude", s, date:today, h, sig:p[h], px:Q[s].c, spx:Q[BENCH]?.c || null, reason:String(p.reason).slice(0,300), mood:crowd(s).mood || null});
+      }
+    }
+    saveCalls(); claudeStatus = "";
+  }catch(e){ claudeStatus = "Could not get Claude's picks. The app will try again in an hour (at most 3 tries a day)."; }
+  finally{ claudeBusy = false; renderList(); renderClaude(); renderTrack(); }
+}
+function costText(){
+  const log = cloudMode ? (cloudState?.costs || {}) : store.get("claudeCost", {}), month = nyDate(Date.now()).slice(0,7);
+  const mtd = Object.entries(log).filter(([d]) => d.startsWith(month)).reduce((a,[,v]) => a + v, 0);
+  if (!mtd) return "";
+  if (cloudMode && cloudState?.costsBy){
+    const sums = Object.fromEntries(MODELS.map(m => [m.key, Object.entries(cloudState.costsBy[m.key] || {}).filter(([d]) => d.startsWith(month)).reduce((a,[,x]) => a + x, 0)]));
+    sums.opus += Math.max(0, mtd - Object.values(sums).reduce((a, x) => a + x, 0));   // spending from before the comparison was Opus 5.5
+    const per = MODELS.map(m => sums[m.key] ? `${m.label} $${sums[m.key].toFixed(2)}` : null).filter(Boolean);
+    return `Claude cost about $${mtd.toFixed(2)} this month (${per.join(" · ")}).`;
+  }
+  const run = cloudMode ? cloudState?.lastRun?.claude : lastRun;
+  return `Claude cost about $${mtd.toFixed(2)} this month` + (run && run.cost ? ` (latest run $${run.cost.toFixed(2)}, ${run.searches} web searches).` : ".");
+}
+function claudeBadge(s){
+  return MODELS.map(m => { const c = latestClaude(s, horizon, m.key); return c ? `<span class="sig ${m.cls} ${c.sig.toLowerCase()}" title="${m.label}'s ${H[horizon].label} call, ${shortDate(c.date)}">${c.sig}</span>` : ""; }).join("");
+}
+function renderClaude(){
+  const rows = [];
+  for (const m of MODELS){
+    const c = latestClaude(sel, horizon, m.key);
+    if (!c){ if (m.key === "opus" || calls.some(x => x.src==="claude" && modelOf(x)===m.key)) rows.push(`<div class="model-row"><span class="label">${m.label}</span><span class="sig big ${m.cls}">—</span><p class="c-reason small">No ${H[horizon].label} call yet.</p></div>`); continue; }
+    const same = ["day","week","month"].map(h => { const x = calls.find(y => y.src==="claude" && !y.kind && modelOf(y)===m.key && y.s===sel && y.date===c.date && callH(y)===h); return x ? `next ${h} ${x.sig}${typeof x.conf === "number" ? ` (${x.conf}%)` : ""}` : null; }).filter(Boolean);
+    rows.push(`<div class="model-row"><span class="label">${m.label}</span><span class="sig big ${m.cls} ${c.sig.toLowerCase()}">${c.sig}${typeof c.conf === "number" ? ` · ${c.conf}%` : ""}</span><p class="c-reason">${esc(c.reason || "")}</p><span class="small">Called ${shortDate(c.date)} at ${usd(c.px)}${same.length > 1 ? `: ${same.join(" · ")}` : ""}</span></div>`);
+  }
+  $("cModels").innerHTML = rows.join("");
+  $("cWhich").textContent = `${H[horizon].label} calls vs the S&P 500`;
+  const any = calls.some(x => x.src==="claude");
+  $("cMeta").textContent = any ? `${costText()}` + (claudeStatus ? " " + claudeStatus : "") + (cloudMode ? " " + cloudStatus : "")
+    : cloudMode ? (cloudStatus || "Loading the cloud tracker…") : claudeStatus || (aKey ? "Claude will make a call once prices load." : "Add an Anthropic API key in Settings and Claude will make a daily call on every stock in your watchlist.");
+}
+function renderTrack(){
+  if (!$("trRows")) return;
+  renderRace();
+  document.querySelectorAll("#horizon button").forEach(b => b.classList.toggle("on", b.dataset.h===horizon));
+  const mine = calls.filter(c => c.s===sel && !c.kind && inView(c, horizon)).sort((a,b) => a.date<b.date?1:a.date>b.date?-1:(a.src<b.src?-1:1));
+  const tile = (src, idPct, idN) => {
+    const t = tally(mine.filter(c => c.src===src), horizon);
+    $(idPct).textContent = t.pct==null ? "—" : Math.round(t.pct) + "%";
+    $(idN).textContent = t.n ? `${t.ok} of ${t.n} calls right` : "No graded calls yet";
+  };
+  tile("analyst","trA","trAn");
+  for (const [m, idP, idN] of MODELS.map(x => [x.key, x.tr, x.tr + "n"])){
+    const t = tally(mine.filter(c => c.src==="claude" && !isPractice(c) && modelOf(c)===m), horizon);
+    $(idP).textContent = t.pct==null ? "—" : Math.round(t.pct) + "%";
+    $(idN).textContent = t.n ? `${t.ok} of ${t.n} calls right` : "No graded calls yet";
+  }
+  const aa = tally(calls.filter(c=>c.src==="analyst"), horizon);
+  const byModel = Object.fromEntries(MODELS.map(m => [m.key, tally(calls.filter(c=>c.src==="claude" && !c.kind && !isPractice(c) && modelOf(c)===m.key && inView(c, horizon)), horizon)]));
+  const pct = t => t.pct==null ? "no graded calls" : `${Math.round(t.pct)}% (${t.ok}/${t.n})`;
+  {
+    const buckets = [["under 50%", v => v < 50], ["50–64%", v => v >= 50 && v < 65], ["65%+", v => v >= 65]];
+    const lines = MODELS.map(m => {
+      const withConf = calls.filter(c => c.src==="claude" && !c.kind && !isPractice(c) && modelOf(c)===m.key && inView(c, horizon) && typeof c.conf === "number")
+        .map(c => ({c, g: grade(c, horizon)})).filter(x => x.g.state === "graded");
+      const parts = buckets.map(([label, f]) => { const ys = withConf.filter(x => f(x.c.conf)); return ys.length ? `${label} ${ys.filter(x => x.g.ok).length}/${ys.length}` : null; }).filter(Boolean);
+      return parts.length ? `${m.label}: ${parts.join(", ")}` : null;
+    }).filter(Boolean);
+    $("trConf").textContent = lines.length ? `Right by stated confidence, ${H[horizon].label}, all stocks: ${lines.join(" · ")}. Well-calibrated calls are right more often at higher confidence.` : "";
+  }
+  $("trAll").textContent = `All stocks, ${H[horizon].label}: analysts ${pct(aa)} · ${MODELS.map(m => `${m.label} ${pct(byModel[m.key])}`).join(" · ")} · Last checked ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
+  $("trRows").innerHTML = mine.length ? mine.slice(0, 60).map(c => {
+    const g = grade(c, horizon);
+    const res = isPractice(c) ? `<span class="small">Practice day, not counted${g.state==="graded" ? ` (was ${g.outcome})` : ""}</span>`
+      : g.state==="graded" ? `<span class="res ${g.ok?"up":"down"}">${g.ok?"✓ Right":"✗ Wrong"}</span> <span class="small">(${g.outcome})</span>`
+      : g.state==="pending" ? `<span class="small">Pending until ${shortDate(g.end)}</span>`
+      : `<span class="small">No price data</span>`;
+    const pc = v => v==null ? "—" : `<span class="${cls(v)}">${sgn(v,"%")}</span>`;
+    return `<tr><td class="num">${shortDate(c.date)}</td><td>${c.src==="claude" ? modelInfo(c).label : "Analysts"}</td>
+      <td><span class="sig ${c.src==="claude" ? modelInfo(c).cls + " " : ""}${c.sig.toLowerCase()}" style="margin:0">${c.sig}</span></td>
+      <td class="num small">${typeof c.conf === "number" ? c.conf + "%" : ""}</td>
+      <td class="num">${pc(g.ret)}</td><td class="num">${pc(g.bret)}</td><td class="num">${pc(g.ex)}</td><td>${res}</td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="small" style="padding:10px 0">No calls logged for ${sel} yet.</td></tr>`;
+  const b = H[horizon].band;
+  $("trNote").innerHTML = `A call is right when it matches what happened over the next ${H[horizon].label}: <b>Buy</b> if the stock beat the S&amp;P 500 by more than ${b} point${b===1?"":"s"}, <b>Sell</b> if it trailed by more than ${b}, <b>Hold</b> if in between. Pending rows show the result so far. Grades update every 30 seconds and price history every 6 hours while this page is open; when you reopen it, everything catches up.`
+    + (cloudMode ? "" : avKey ? (histStatus ? " " + histStatus : "") : " Add a free Alpha Vantage key in Settings to grade past analyst calls.");
+}
+// Weighted score from -2 (all strong sell) to +2 (all strong buy)
+function signal(r){
+  if (!r) return null;
+  const n = r.strongBuy + r.buy + r.hold + r.sell + r.strongSell;
+  if (!n) return null;
+  const score = (2*r.strongBuy + r.buy - r.sell - 2*r.strongSell) / n;
+  return { n, score, label: score >= 0.5 ? "Buy" : score <= -0.5 ? "Sell" : "Hold" };
+}
+function sigBadge(s){
+  const g = signal(recs[s]);
+  return g ? `<span class="sig ${g.label.toLowerCase()}" title="${g.n} analysts">${g.label}</span>` : "";
+}
+function renderRec(){
+  const r = recs[sel], g = signal(r), el = $("recSig");
+  if (!(sel in recs)){ el.className="sig big"; el.textContent="—"; $("recBar").innerHTML=""; $("recLegend").textContent="Loading analyst ratings…"; return; }
+  if (!g){ el.className="sig big"; el.textContent="No rating"; $("recBar").innerHTML=""; $("recLegend").textContent="No analyst coverage for this symbol."; return; }
+  el.className = "sig big " + g.label.toLowerCase(); el.textContent = g.label;
+  const css = getComputedStyle(document.documentElement), up = css.getPropertyValue("--up").trim(), dn = css.getPropertyValue("--down").trim();
+  const parts = [["Strong buy",r.strongBuy,up],["Buy",r.buy,up+"99"],["Hold",r.hold,css.getPropertyValue("--muted").trim()+"66"],["Sell",r.sell,dn+"99"],["Strong sell",r.strongSell,dn]];
+  $("recBar").innerHTML = parts.map(([,v,c]) => v ? `<span style="width:${v/g.n*100}%;background:${c}"></span>` : "").join("");
+  const month = new Date(r.period+"T00:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  $("recLegend").innerHTML = parts.map(([l,v,c]) => `<span><i style="background:${c}"></i>${l} <b class="num">${v}</b></span>`).join("") + `<span>· ${g.n} analysts, ${month}</span>`;
+}
+async function loadMarket(){
+  try{
+    const m = await api(`/stock/market-status?exchange=US`);
+    const label = m.isOpen ? "Market open" : m.session==="pre-market" ? "Pre-market" : m.session==="post-market" ? "After hours" : "Market closed";
+    $("mkt").innerHTML = `<span class="dot ${m.isOpen?"live":""}"></span>${label}`;
+  }catch{}
+}
+
+// ---------- realtime ----------
+function connect(){
+  try{ ws && ws.close(); }catch{}
+  ws = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(key)}`);
+  ws.onopen = () => { watch.forEach(sub); setConn(); };
+  ws.onmessage = e => {
+    let m; try{ m = JSON.parse(e.data); }catch{ return; }
+    if (m.type !== "trade") return;
+    lastMsg = Date.now(); wsLive = true;
+    const latest = {};
+    for (const t of m.data) if (!latest[t.s] || t.t >= latest[t.s].t) latest[t.s] = t;
+    for (const s in latest){
+      const t = latest[s]; const q = Q[s] || (Q[s] = {pc:t.p,o:t.p,h:t.p,l:t.p});
+      const prev = q.c; q.c = t.p; q.lt = t.t; q.live = true;
+      q.h = Math.max(q.h ?? t.p, t.p); q.l = Math.min(q.l ?? t.p, t.p);
+      recalc(s); pushTick(s, t.p, t.t); render(s, prev);
+    }
+    setConn();
+  };
+  ws.onclose = () => { wsLive = false; setConn(); setTimeout(() => key && connect(), 5000); };
+  ws.onerror = () => {};
+}
+function sub(s){ if (ws && ws.readyState===1) ws.send(JSON.stringify({type:"subscribe",symbol:s})); }
+function unsub(s){ if (ws && ws.readyState===1) ws.send(JSON.stringify({type:"unsubscribe",symbol:s})); }
+function setConn(){
+  const open = ws && ws.readyState===1;
+  const streaming = open && Date.now()-lastMsg < 30000;
+  $("conn").innerHTML = `<span class="dot ${streaming?"live":""}"></span>${streaming?"Streaming live trades":open?"Connected · waiting for trades":"Reconnecting…"}`;
+}
+function recalc(s){ const q=Q[s]; if(q.pc){ q.d=q.c-q.pc; q.dp=q.d/q.pc*100; } }
+function pushTick(s, p, t){
+  const a = ticks[s] || (ticks[s] = []);
+  const last = a[a.length-1];
+  if (last && t - last[0] < 1000) { last[1] = p; } else a.push([t, p]);
+  if (a.length > 4000) a.splice(0, a.length-4000);
+}
+async function pollAll(){
+  // REST refresh; paced to stay under the free-tier limit of 60 calls/minute
+  for (const s of [...watch, BENCH]){ try{ await loadQuote(s); }catch(e){ if(e.message==="auth") return authFail(); } await new Promise(r=>setTimeout(r,250)); }
+  store.set("snaps", snaps); pricesReady = true;
+  loadMarket(); setConn(); renderTrack(); renderMood();
+  askClaude();
+}
+
+// ---------- rendering ----------
+let rafPending = false, lastRecSym = null;
+function render(s, prev){
+  const row = document.querySelector(`.row[data-s="${s}"]`);
+  if (row){
+    const q = Q[s];
+    row.querySelector(".px").textContent = fmt(q.c);
+    const ch = row.querySelector(".ch"); ch.textContent = q.dp!=null? sgn(q.dp,"%") : ""; ch.className = "ch num "+cls(q.d);
+    if (prev!=null && prev!==q.c){ row.classList.remove("flash-up","flash-down"); void row.offsetWidth; row.classList.add(q.c>prev?"flash-up":"flash-down"); }
+  }
+  if (s===sel) renderDetail();
+  if (pf.pos[s]) renderPf();
+  if (!rafPending){ rafPending = true; requestAnimationFrame(()=>{ rafPending=false; drawChart(); }); }
+}
+function renderList(){
+  const note = $("wlNote");
+  if (note){ note.hidden = !(avKey && watch.length > 24); note.textContent = `${watch.length} stocks. The free Alpha Vantage plan covers price history for 24 a day, so the rest catch up the next day.`; }
+  $("list").innerHTML = watch.map(s => {
+    const q = Q[s] || {};
+    return `<li class="row ${s===sel?"sel":""}" data-s="${s}" tabindex="0">
+      <div class="sym">${s}${sigBadge(s)}${claudeBadge(s)}</div><div class="px num">${fmt(q.c)}</div>
+      <div class="nm">${esc(names[s]||"")}</div><div class="ch num ${cls(q.d)}">${q.dp!=null?sgn(q.dp,"%"):""}</div>
+      <button class="rm" title="Remove ${s}" data-rm="${s}" type="button">×</button></li>`;
+  }).join("");
+}
+function renderDetail(){
+  const q = Q[sel] || {};
+  $("dSym").textContent = sel;
+  $("dName").textContent = names[sel] || sel;
+  $("dPrice").textContent = q.c ? usd(q.c) : "—";
+  $("dChg").innerHTML = q.d!=null ? `<span class="${cls(q.d)}">${sgn(q.d)} (${sgn(q.dp,"%")})</span> <span class="small">today</span>` : "&nbsp;";
+  $("sO").textContent = fmt(q.o); $("sH").textContent = fmt(q.h); $("sL").textContent = fmt(q.l); $("sP").textContent = fmt(q.pc);
+  $("dUpdated").textContent = q.lt ? "Last trade " + new Date(q.lt).toLocaleTimeString() : "";
+  if (lastRecSym !== sel){ lastRecSym = sel; renderRec(); renderClaude(); renderTrack(); renderMood(); }
+  renderTicket();
+}
+function renderTicket(){
+  const q = Q[sel] || {}; const qty = Math.max(0, Math.floor(+$("qty").value||0));
+  $("tSym").textContent = sel; $("tPx").textContent = usd(q.c); $("tTot").textContent = q.c ? usd(q.c*qty) : "—";
+  const held = pf.pos[sel]?.qty || 0;
+  $("tAvailL").textContent = side==="buy" ? "Buying power" : "Shares owned";
+  $("tAvail").textContent = side==="buy" ? usd(pf.cash) : fmt(held,0);
+  $("place").textContent = (side==="buy"?"Buy ":"Sell ") + (qty||"") + " " + sel;
+  $("place").disabled = !q.c || !qty;
+}
+function renderPf(){
+  let mv = 0, cost = 0;
+  const rows = Object.entries(pf.pos).map(([s,p]) => {
+    const px = Q[s]?.c ?? p.avg; const val = px*p.qty; const pl = (px-p.avg)*p.qty;
+    mv += val; cost += p.avg*p.qty;
+    return `<tr data-s="${s}"><td><b>${s}</b></td><td class="num">${fmt(p.qty,0)}</td><td class="num">${fmt(p.avg)}</td><td class="num">${fmt(px)}</td><td class="num">${usd(val)}</td><td class="num ${cls(pl)}">${sgn(pl)} <span class="small">(${sgn(pl/(p.avg*p.qty)*100,"%")})</span></td></tr>`;
+  });
+  $("pos").innerHTML = rows.join(""); $("posEmpty").hidden = rows.length>0;
+  const total = pf.cash + mv, ret = total - START_CASH;
+  $("pVal").textContent = usd(total); $("pCash").textContent = usd(pf.cash);
+  $("pRet").innerHTML = `<span class="${cls(ret)}">${sgn(ret)} (${sgn(ret/START_CASH*100,"%")})</span>`;
+  $("hist").innerHTML = pf.hist.length ? pf.hist.slice().reverse().map(h =>
+    `<div><span><b class="${h.side==="buy"?"up":"down"}">${h.side.toUpperCase()}</b> ${h.qty} ${h.s} @ ${fmt(h.px)}</span><span>${new Date(h.t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span></div>`).join("")
+    : `<div>No orders yet.</div>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---------- paper race: each model trades its next-day calls ----------
+const RACE_START = 100000;
+// "Confident only" trades just the Buy/Sell calls stated at this confidence or higher.
+// 45% was chosen after seeing the Oct 7 - Nov 4 backtest, so only the live race tests it fairly.
+const CONF_MIN = 45;
+// Portfolio styles: which calls a portfolio trades and how long it holds them
+const STYLES = [
+  {key:"all",  label:"All calls",      h:"day",  pick: c => c.sig !== "Hold",
+   about:"Splits its money equally across all of its next-day calls every trading day: buys the Buys, short-sells the Sells, holds to the next close. Holds sit out."},
+  {key:"conf", label:"Confident only", h:"day",  pick: c => c.sig !== "Hold" && typeof c.conf === "number" && c.conf >= CONF_MIN,
+   about:`Like All calls, but only the calls stated at ${CONF_MIN}% confidence or more; cash on days with none. The ${CONF_MIN}% threshold was picked after seeing the backtest, so the live race is its fair test.`},
+  {key:"long", label:"Long only",      h:"day",  pick: c => c.sig === "Buy",
+   about:"Only buys the Buy calls and skips the Sells, so it never short-sells (no borrowing fees or margin in real life). Cash on days with no Buys."},
+  {key:"week", label:"Weekly",         h:"week", pick: c => c.sig !== "Hold",
+   about:"Trades the next-week calls and rebalances once a week instead of daily, holding each position about 7 days, so it changes positions far less often."}
+];
+// Trading cost per round trip (buying and later selling), as a percent of the money moved. Charged only on positions that change.
+let raceCost = (() => { const v = Number(store.get("raceCost", 0.05)); return isFinite(v) && v >= 0 ? v : 0.05; })();
+let raceStyle = store.get("raceStyle", "all");
+if (!STYLES.some(s => s.key === raceStyle)) raceStyle = "all";
+
+// One model trading one style over a list of calls
+function runPortfolio(list, model, style, universe){
+  const byDate = new Map();
+  for (const c of list){
+    if (c.src !== "claude" || c.kind || isPractice(c) || modelOf(c) !== model || callH(c) !== style.h) continue;
+    const g = grade(c, style.h); if (g.state === "nodata" || g.ret == null) continue;
+    if (!byDate.has(c.date)) byDate.set(c.date, []);
+    byDate.get(c.date).push({c, g});
+  }
+  // every date any model made calls: a day this model missed counts as a day in cash (positions sold)
+  let dates = [...(universe || byDate.keys())].sort();
+  if (style.h === "week"){   // rebalance only once the previous week's positions have run their course
+    const keep = []; let free = "";
+    for (const d of dates){ if (byDate.has(d) && d >= free){ keep.push(d); free = byDate.get(d)[0].g.end; } }
+    dates = keep;
+  }
+  let v = RACE_START, vg = RACE_START, prev = new Map(), costPaid = 0;
+  const st = {days:0, up:0, best:null, worst:null, trades:0, cash:0};
+  const points = [];
+  for (const d of dates){
+    const all = byDate.get(d) || [], pending = all.some(x => x.g.state === "pending");
+    const xs = all.filter(x => style.pick(x.c));
+    const w = new Map(xs.map(x => [x.c.s, (x.c.sig === "Buy" ? 1 : -1) / xs.length]));
+    let moved = 0; for (const s of new Set([...w.keys(), ...prev.keys()])) moved += Math.abs((w.get(s) || 0) - (prev.get(s) || 0));
+    const cost = (raceCost / 100) / 2 * moved;   // one-way share of a round trip, on the money that changes hands
+    const r = xs.length ? xs.reduce((a, x) => a + (x.c.sig === "Buy" ? x.g.ret : -x.g.ret), 0) / xs.length / 100 : 0;
+    costPaid += v * cost; v = v * (1 - cost) * (1 + r); vg = vg * (1 + r); prev = w;
+    points.push({date:d, v, vg, pending, bret: all[0]?.g.bret});
+    if (!pending){ if (xs.length){ st.days++; st.trades += xs.length; if (r > 0) st.up++; st.best = st.best == null ? r*100 : Math.max(st.best, r*100); st.worst = st.worst == null ? r*100 : Math.min(st.worst, r*100); } else st.cash++; }
+  }
+  return {points, st, v, vg, costPaid, pending: points.length ? points[points.length - 1].pending : false};
+}
+function raceFor(list, styleKey){
+  const style = STYLES.find(s => s.key === styleKey) || STYLES[0];
+  const universe = new Set(list.filter(c => c.src === "claude" && !c.kind && !isPractice(c) && callH(c) === style.h && grade(c, style.h).state !== "nodata").map(c => c.date));
+  const runs = Object.fromEntries(MODELS.map(m => [m.key, runPortfolio(list, m.key, style, universe)]));
+  const dates = [...new Set(Object.values(runs).flatMap(r => r.points.map(p => p.date)))].sort();
+  const lines = {spy: [RACE_START]};
+  for (const m of MODELS){
+    const byD = new Map(runs[m.key].points.map(p => [p.date, p.v])); let last = RACE_START;
+    lines[m.key] = [RACE_START, ...dates.map(d => (last = byD.has(d) ? byD.get(d) : last))];
+  }
+  let s = RACE_START;
+  for (const d of dates){ const p = Object.values(runs).flatMap(r => r.points).find(x => x.date === d && x.bret != null); s *= 1 + (p ? p.bret : 0) / 100; lines.spy.push(s); }
+  return {style, runs, dates, lines, pending: Object.values(runs).some(r => r.pending)};
+}
+// ---------- Alpaca paper account (traded by the cloud tracker) ----------
+// ---------- Alpaca live view: read-only, straight from Alpaca's paper-trading API ----------
+const ALP_BASE = "https://paper-api.alpaca.markets";   // paper only: the live-trading address is never used
+const ALP_RANGES = [
+  {key:"1D", label:"Today", q:"period=1D&timeframe=5Min"},
+  {key:"1W", label:"Week", q:"period=1W&timeframe=1H"},
+  {key:"1M", label:"Month", q:"period=1M&timeframe=1D"},
+  {key:"3M", label:"3 months", q:"period=3M&timeframe=1D"}
+];
+let alpKeys = store.get("alpacaKeys", {}), alpLive = {}, alpRange = store.get("alpRange", "1D"), alpTimer = null, alpBusy = false, alpClock = null, alpUpdated = 0, alpHistFor = "", alpHistAt = 0;
+if (!ALP_RANGES.some(r => r.key === alpRange)) alpRange = "1D";
+const alpModels = () => MODELS.filter(m => alpKeys[m.key]?.id && alpKeys[m.key]?.secret);
+async function alpGet(m, path){   // GET requests only: Void never places, changes or cancels orders from the browser
+  const k = alpKeys[m.key];
+  const r = await fetch(ALP_BASE + path, { method: "GET", headers: { "APCA-API-KEY-ID": k.id, "APCA-API-SECRET-KEY": k.secret }, cache: "no-store" });
+  if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? "Alpaca rejected these keys. Check them in Settings → Alpaca live view." : `Alpaca answered with error ${r.status}.`);
+  return r.json();
+}
+async function refreshAlpaca(forceHist){
+  const ms = alpModels(); if (!ms.length || alpBusy) return; alpBusy = true;
+  const wantHist = forceHist || alpHistFor !== alpRange || Date.now() - alpHistAt > 60000;
+  const range = ALP_RANGES.find(r => r.key === alpRange);
+  await Promise.all(ms.map(async m => {
+    const L = alpLive[m.key] ??= {};
+    try{
+      const [acct, pos, orders] = await Promise.all([alpGet(m, "/v2/account"), alpGet(m, "/v2/positions"), alpGet(m, "/v2/orders?status=all&limit=20&direction=desc")]);
+      Object.assign(L, {acct, pos: Array.isArray(pos) ? pos : [], orders: Array.isArray(orders) ? orders : [], err: null, at: Date.now()});
+      if (wantHist){ try{ L.hist = await alpGet(m, "/v2/account/portfolio/history?" + range.q); L.histFor = alpRange; }catch{ L.hist = null; } }
+      if (!alpClock || Date.now() - alpClock.at > 60000){ try{ alpClock = {...await alpGet(m, "/v2/clock"), at: Date.now()}; }catch{} }
+    }catch(e){ L.err = e.message || "Could not reach Alpaca."; }
+  }));
+  if (wantHist){ alpHistAt = Date.now(); alpHistFor = alpRange; }
+  alpUpdated = Date.now(); alpBusy = false;
+  try{ renderAlpView(); }catch(e){ console.error(e); }
+  renderAlpaca();
+}
+function scheduleAlpaca(){
+  clearTimeout(alpTimer); if (!alpModels().length) return;
+  const watching = !$("alpView").hidden && document.visibilityState === "visible";
+  alpTimer = setTimeout(async () => { await refreshAlpaca(); scheduleAlpaca(); }, watching ? (alpClock?.is_open ? 15000 : 60000) : 120000);
+}
+// One account as the panels show it: live from Alpaca when keys are set, otherwise what the tracker saved
+function alpSlot(m){
+  const A = cloudState?.[m.slot], L = alpLive[m.key];
+  if (!L?.acct) return A ? {...A, model: m} : null;
+  const a = L.acct, eq = +a.equity;
+  return {...(A || {}), model: m, live: true, strategy: A?.strategy || m.key + ":conf",
+    startEquity: A?.startEquity || (L.hist?.base_value > 0 ? +L.hist.base_value : 5000), startDate: A?.startDate,
+    account: {equity: eq, lastEquity: +a.last_equity || eq, cash: +a.cash, status: a.status, at: new Date(L.at).toISOString()},
+    positions: L.pos.map(p => ({symbol: p.symbol, qty: +p.qty, value: +p.market_value, pl: +p.unrealized_pl, entry: +p.avg_entry_price, price: +p.current_price, plpc: +p.unrealized_plpc, dayPl: +p.unrealized_intraday_pl, change: +p.change_today}))};
+}
+const STYLE_NAMES = {all:"all calls", conf:"confident only", long:"long only"};
+const fmtTime = ms => new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+function renderAlpView(){
+  if (!$("alpView") || $("alpView").hidden) return;
+  const has = alpModels().length > 0;
+  $("alpSetup").hidden = has;
+  $("alpTitle").textContent = has ? "Alpaca paper trading · live from Alpaca" : "Alpaca paper trading · not live yet";
+  const accts = MODELS.map(alpSlot).filter(A => A?.account);
+  // status line
+  const errs = alpModels().filter(m => alpLive[m.key]?.err).map(m => `${m.label}: ${alpLive[m.key].err}`);
+  let st = "";
+  if (alpClock){ const nx = new Date(alpClock.is_open ? alpClock.next_close : alpClock.next_open); st = (alpClock.is_open ? "Market open · closes " : "Market closed · opens ") + nx.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"}) + " · "; }
+  if (has) st += alpUpdated ? `updated ${fmtTime(alpUpdated)} · refreshes every ${alpClock?.is_open ? 15 : 60} seconds` : "loading…";
+  else st += accts.length ? "showing the tracker's last saved snapshot" : "";
+  $("alpStatus").textContent = st + (errs.length ? " · " + errs.join(" ") : "");
+  $("alpRange").innerHTML = ALP_RANGES.map(r => `<button type="button" data-alp-range="${r.key}" class="${r.key === alpRange ? "on" : ""}">${r.label}</button>`).join("");
+  $("alpRange").style.gridTemplateColumns = `repeat(${ALP_RANGES.length},auto)`;
+  $("alpRefresh").hidden = !has;
+  // tiles: one per account, plus the S&P 500
+  const spy = Q[BENCH], spyToday = spy?.pc ? (spy.c / spy.pc - 1) * 100 : null;
+  const tile = (lab, color, val, sub, c) => `<div class="race-tile"><span class="label"><i class="key" style="background:var(${color})"></i>${lab}</span><span class="num ${c || ""}">${val}</span><span class="small">${sub}</span></div>`;
+  $("alpTiles").innerHTML = accts.map(A => {
+    const eq = A.account.equity, start = A.startEquity || eq, last = A.account.lastEquity || eq, since = (eq / start - 1) * 100, today = (eq / last - 1) * 100;
+    const when = A.live ? "" : ` · <b>not live:</b> tracker snapshot from ${A.account.at ? new Date(A.account.at).toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"}) : "its last run"}`;
+    return tile(A.model.label, A.model.color, usd(eq), `<span class="${cls(today)}">${sgn(today, "%")}</span> today (${usd(eq - last)}) · <span class="${cls(since)}">${sgn(since, "%")}</span> since the start${when}`, cls(since));
+  }).join("") + (spyToday != null ? tile("S&P 500", "--muted", sgn(spyToday, "%"), "today, for comparison", cls(spyToday)) : "");
+  drawAlpChart();
+  // one card per account
+  $("alpCards").innerHTML = accts.map(alpCard).join("");
+}
+function alpCard(A){
+  const m = A.model, L = alpLive[m.key], eq = A.account.equity, start = A.startEquity || eq, last = A.account.lastEquity || eq;
+  const lim = A.limits || {maxPosition: .15, dailyLoss: .04, maxDrawdown: .15};
+  const [, style] = (A.strategy || "").split(":");
+  const pos = (A.positions || []).slice().sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const long = pos.filter(p => p.qty > 0).reduce((a, p) => a + p.value, 0), short = pos.filter(p => p.qty < 0).reduce((a, p) => a + Math.abs(p.value), 0);
+  const today = (eq / last - 1) * 100, dd = (eq / start - 1) * 100, biggest = pos.length ? Math.max(...pos.map(p => Math.abs(p.value))) / eq * 100 : 0;
+  // warn: share of the limit at which the bar turns red (losses warn early; the position cap is a target, so only going past it is a warning)
+  const meter = (title, val, used, limit, col, warn = .75) => `<div class="meter"><span>${title} <b>${val}</b></span><div class="bar"><i style="width:${Math.max(0, Math.min(100, used / limit * 100)).toFixed(1)}%;background:var(${used / limit > warn ? "--down" : col})"></i></div><span>limit ${limit}%</span></div>`;
+  const expo = eq > 0 ? `<div class="meter"><span>Long <b>${usd(long)}</b> · short <b>${usd(short)}</b> · cash <b>${usd(A.account.cash)}</b></span><div class="bar"><i style="width:${(long / eq * 100).toFixed(1)}%;background:var(--up)"></i><i style="width:${(short / eq * 100).toFixed(1)}%;background:var(--down)"></i></div><span>${Math.round((long + short) / eq * 100)}% of the account invested</span></div>` : "";
+  // the model's own call behind each position
+  const callFor = sym => calls.filter(c => c.src === "claude" && !c.kind && modelOf(c) === m.key && c.s === sym && callH(c) === "day").sort((a, b) => a.date < b.date ? 1 : -1)[0];
+  const rows = pos.map(p => {
+    const c = callFor(p.symbol), w = Math.abs(p.value) / eq * 100;
+    const why = c ? `<tr class="why"><td colspan="8">${m.label}: next-day ${c.sig}${typeof c.conf === "number" ? `, ${c.conf}% confident` : ""} (${shortDate(c.date)}). ${esc(c.reason || "")}</td></tr>` : "";
+    return `<tr${c ? ' class="has-why"' : ""}><td><b>${esc(p.symbol)}</b></td><td>${p.qty < 0 ? "Short" : "Long"}</td><td class="num">${fmt(Math.abs(p.qty), Math.abs(p.qty) % 1 ? 3 : 0)}</td><td class="num">${p.entry ? fmt(p.entry) : "—"}</td><td class="num">${p.price ? fmt(p.price) : "—"}</td><td class="num">${usd(Math.abs(p.value))} <span class="small">${w.toFixed(0)}%</span></td><td class="num ${cls(p.dayPl)}">${p.dayPl != null && !isNaN(p.dayPl) ? usd(p.dayPl) : "—"}</td><td class="num ${cls(p.pl)}">${usd(p.pl)}${p.plpc != null && !isNaN(p.plpc) ? ` <span class="small">${sgn(p.plpc * 100, "%")}</span>` : ""}</td></tr>${why}`;
+  }).join("");
+  const orders = (L?.orders || []).slice(0, 12).map(o => {
+    const t = new Date(o.filled_at || o.submitted_at || o.created_at), size = o.notional ? usd(+o.notional) : `${fmt(+o.qty, +o.qty % 1 ? 3 : 0)} sh`;
+    const fill = +o.filled_qty ? `${fmt(+o.filled_qty, +o.filled_qty % 1 ? 3 : 0)} @ ${fmt(+o.filled_avg_price)}` : "—";
+    return `<tr><td class="num">${t.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"})}</td><td><b>${esc(o.symbol)}</b></td><td class="${o.side === "buy" ? "up" : "down"}">${o.side}</td><td class="num">${size}</td><td class="num">${fill}</td><td>${esc(String(o.status).replace(/_/g, " "))}</td></tr>`;
+  }).join("");
+  return `<section class="panel race">
+    <div class="rec-head"><span class="alp-head"><i class="key" style="background:var(${m.color})"></i><b>${esc(m.label)}</b> · ${esc(STYLE_NAMES[style] || style || "")}</span>
+      <span class="small">${A.live ? "live" : "tracker snapshot"} · ${usd(eq)}${A.account.status && A.account.status !== "ACTIVE" ? ` · account ${esc(A.account.status)}` : ""}${A.account.at ? " · " + new Date(A.account.at).toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"}) : ""}</span></div>
+    ${A.paused ? `<div class="small" style="margin-top:8px"><b class="down">Paused:</b> ${esc(A.paused)}</div>` : ""}
+    ${L?.err ? `<div class="small down" style="margin-top:8px">${esc(L.err)}</div>` : ""}
+    <div class="meters">
+      ${meter("Today", sgn(today, "%"), Math.max(0, -today), Math.round((lim.dailyLoss || .04) * 100), "--accent2")}
+      ${meter("Since the start", sgn(dd, "%"), Math.max(0, -dd), Math.round((lim.maxDrawdown || .15) * 100), "--accent2")}
+      ${meter("Largest position", biggest.toFixed(1) + "%", biggest, Math.round((lim.maxPosition || .15) * 100), "--blue", 1.1)}
+      ${expo}
+    </div>
+    <div class="small" style="margin-top:6px">Hard limits: no new trades after a daily drop past its limit, everything sold and paused after a fall past the "since the start" limit, and no single stock above the position limit.</div>
+    <div class="alp-sub">Positions (${pos.length})</div>
+    ${pos.length ? `<div class="tbl-wrap"><table class="race-tbl"><thead><tr><th>Stock</th><th>Side</th><th>Shares</th><th>Entry</th><th>Now</th><th>Value</th><th>Today</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="small" style="margin-top:6px">No open positions${A.live ? "" : " in the last snapshot"}.</div>`}
+    ${orders ? `<div class="alp-sub">Recent orders</div><div class="tbl-wrap"><table class="race-tbl"><thead><tr><th>Time</th><th>Stock</th><th>Side</th><th>Size</th><th>Filled</th><th>Status</th></tr></thead><tbody>${orders}</tbody></table></div>` : ""}
+    ${(A.notes || []).length ? `<div class="small" style="margin-top:10px">From the tracker's last run: ${(A.notes || []).map(esc).join(" ")}</div>` : ""}
+  </section>`;
+}
+function drawAlpChart(){
+  const cv = $("alpChart"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, Hh = cv.clientHeight; if (!W) return;
+  if (cv.width !== W*dpr || cv.height !== Hh*dpr){ cv.width = W*dpr; cv.height = Hh*dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,Hh);
+  const css = getComputedStyle(document.documentElement), col = v => css.getPropertyValue(v).trim();
+  g.font = `11px ${col("--mono")}`; g.fillStyle = col("--muted");
+  // percent change from the first value in the range, per account
+  const series = alpModels().map(m => {
+    const h = alpLive[m.key]?.hist; if (!h?.timestamp?.length || alpLive[m.key].histFor !== alpRange) return null;
+    const pts = h.timestamp.map((t, i) => [t * 1000, h.equity[i]]).filter(p => p[1] != null && p[1] > 0);
+    if (pts.length < 2) return null;
+    const b = pts[0][1]; return {m, pts: pts.map(([t, v]) => [t, (v / b - 1) * 100])};
+  }).filter(Boolean);
+  const range = ALP_RANGES.find(r => r.key === alpRange);
+  $("alpLegend").innerHTML = series.map(s => `<span><i style="background:var(${s.m.color})"></i>${s.m.label}</span>`).join("") + (series.length ? `<span>Percent change over ${range.label.toLowerCase() === "today" ? "today" : "the last " + range.label.toLowerCase()}, from Alpaca's account history</span>` : "");
+  if (!series.length){ g.fillText(alpModels().length ? "Loading account history…" : "Add the Alpaca keys in Settings to see the accounts' value over time.", 8, Hh / 2); return; }
+  const all = series.flatMap(s => s.pts), t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
+  let lo = Math.min(0, ...all.map(p => p[1])), hi = Math.max(0, ...all.map(p => p[1]));
+  if (hi - lo < 0.2){ hi += 0.1; lo -= 0.1; }
+  const pad = (hi - lo) * .1; lo -= pad; hi += pad;
+  const padR = 64, padB = 18, x = t => (t - t0) / Math.max(1, t1 - t0) * (W - padR), y = v => 6 + (1 - (v - lo) / (hi - lo)) * (Hh - 6 - padB);
+  g.strokeStyle = col("--line"); g.lineWidth = 1;
+  for (let i = 0; i <= 3; i++){ const v = lo + (hi - lo) * i / 3, yy = Math.round(y(v)) + .5; g.beginPath(); g.moveTo(0, yy); g.lineTo(W - padR, yy); g.stroke(); g.fillText(sgn(v, "%"), W - padR + 6, yy + 4); }
+  g.setLineDash([4,4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(0, y(0)); g.lineTo(W - padR, y(0)); g.stroke(); g.setLineDash([]);
+  const intraday = t1 - t0 < 36 * 3600e3, lab = t => new Date(t).toLocaleString([], intraday ? {hour:"2-digit", minute:"2-digit"} : {month:"short", day:"numeric"});
+  g.fillText(lab(t0), 0, Hh - 3); const l1 = lab(t1); g.fillText(l1, W - padR - g.measureText(l1).width, Hh - 3);
+  for (const s of series){
+    g.strokeStyle = col(s.m.color); g.lineWidth = 2; g.beginPath();
+    s.pts.forEach(([t, v], i) => i ? g.lineTo(x(t), y(v)) : g.moveTo(x(t), y(v))); g.stroke();
+    const [tl, vl] = s.pts[s.pts.length - 1]; g.fillStyle = col(s.m.color); g.beginPath(); g.arc(x(tl), y(vl), 3, 0, 7); g.fill();
+  }
+}
+function setView(v){
+  if (v !== "alpaca") v = "market";
+  store.set("view", v);
+  $("marketView").hidden = v !== "market"; $("alpView").hidden = v !== "alpaca";
+  document.querySelectorAll("#viewSeg [data-view]").forEach(b => { const on = b.dataset.view === v; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  if (v === "alpaca"){ renderAlpView(); if (alpModels().length) refreshAlpaca(true).finally(scheduleAlpaca); }
+  else { try{ drawChart(); renderRace(); }catch{} scheduleAlpaca(); }
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b){ setView(b.dataset.view); if (b.closest("#alpacaPanel")) window.scrollTo({top: 0}); } });
+$("alpRange").addEventListener("click", e => { const b = e.target.closest("[data-alp-range]"); if (!b) return; alpRange = b.dataset.alpRange; store.set("alpRange", alpRange); renderAlpView(); refreshAlpaca(true); });
+$("alpRefresh").addEventListener("click", () => refreshAlpaca(true));
+$("alpOpenSettings").addEventListener("click", () => { toggleSettings(true); $("alpKeyRows").scrollIntoView({block:"center"}); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !$("alpView").hidden) refreshAlpaca(); scheduleAlpaca(); });
+window.addEventListener("resize", () => { if (!$("alpView").hidden) drawAlpChart(); });
+$("alpKeyRows").innerHTML = MODELS.map(m => `<span class="small">${m.label}</span><input id="alpId_${m.key}" autocomplete="off" spellcheck="false" placeholder="Key ID (PK…)" aria-label="${m.label} Alpaca key ID"><input id="alpSec_${m.key}" type="password" autocomplete="off" spellcheck="false" placeholder="Secret key" aria-label="${m.label} Alpaca secret key">`).join("");
+
+function renderAlpaca(){
+  const panel = $("alpacaPanel"); if (!panel) return;
+  const accounts = MODELS.map(alpSlot).filter(A => A?.account);
+  if (!accounts.length){ panel.hidden = true; return; }
+  panel.hidden = false;
+  const tile = (lab, val, sub, c) => `<div class="race-tile"><span class="label">${lab}</span><span class="num ${c || ""}">${val}</span><span class="small">${sub}</span></div>`;
+  $("alpBody").innerHTML = accounts.map(A => {
+    const [model, style] = (A.strategy || "opus:conf").split(":");
+    const m = A.model || MODELS.find(x => x.key === model) || {label:model, key:model};
+    const styleName = {all:"all calls", conf:"confident only", long:"long only"}[style] || style;
+    const eq = A.account.equity, start = A.startEquity || eq, last = A.account.lastEquity || eq;
+    const since = (eq / start - 1) * 100, today = (eq / last - 1) * 100;
+    const invested = (A.positions || []).reduce((a, p) => a + Math.abs(p.value), 0);
+    const pos = (A.positions || []).slice().sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    const lastDate = (A.orders || []).map(o => o.date).sort().pop();
+    const todays = (A.orders || []).filter(o => o.date === lastDate);
+    return `<div class="alp-acct">
+      <div class="alp-head"><i class="key" style="background:var(${m.color || "--muted"})"></i><b>${esc(m.label)}</b> · ${esc(styleName)}<span class="small">${A.account.at ? (A.live ? " · live, " : " · updated ") + new Date(A.account.at).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"}) : ""}</span></div>
+      <div class="race-sum">${[
+        tile("Account value", usd(eq), `<span class="${cls(since)}">${sgn(since,"%")}</span> since ${A.startDate ? shortDate(A.startDate) : "the start"} (${usd(start)})`, cls(since)),
+        tile("Today", sgn(today,"%"), `${usd(eq - last)} since yesterday's close`, cls(today)),
+        tile("Invested", usd(invested), `${pos.length} positions · ${usd(A.account.cash)} cash`)
+      ].join("")}</div>
+      <div class="small" style="margin-top:8px">${A.paused ? `<b class="down">Paused:</b> ${esc(A.paused)} Resume from the repository's Actions tab: run "Void tracker" with "resume Alpaca" ticked.<br>` : ""}${(A.notes || []).map(esc).join("<br>")}</div>
+      ${pos.length ? `<div class="tbl-wrap"><table class="race-tbl"><thead><tr><th>Position</th><th>Side</th><th>Shares</th><th>Value</th><th>Profit / loss</th></tr></thead><tbody>${pos.map(p => `<tr><td>${esc(p.symbol)}</td><td>${p.qty < 0 ? "Short" : "Long"}</td><td class="num">${fmt(Math.abs(p.qty), Math.abs(p.qty) % 1 ? 3 : 0)}</td><td class="num">${usd(Math.abs(p.value))}</td><td class="num ${cls(p.pl)}">${usd(p.pl)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      ${todays.length ? `<div class="small" style="margin-top:6px">Orders on ${shortDate(lastDate)}: ${todays.map(o => o.side === "close" || o.action ? `closed ${esc(o.symbol)}` : `${o.side} ${esc(o.symbol)} ${o.notional ? usd(+o.notional) : (o.qty + (o.qty === "1" ? " share" : " shares"))}`).join(" · ")}.</div>` : ""}
+    </div>`;
+  }).join("");
+  $("alpWhen").innerHTML = (accounts.length > 1 ? `${accounts.length} paper accounts, one per model · ` : "") + `<button type="button" class="linkbtn" data-view="alpaca">Open the Alpaca tab</button>`;
+  const L = accounts[0].limits || {};
+  $("alpLimits").textContent = `Paper money only. Hard limits per account: at most ${Math.round((L.maxPosition || .15) * 100)}% in one stock, no leverage, no new trades after a ${Math.round((L.dailyLoss || .04) * 100)}% daily drop, and everything sold and paused after a ${Math.round((L.maxDrawdown || .15) * 100)}% fall from the start. Orders go in during the early afternoon New York time, right after the calls. Shorts are whole shares only, so small accounts can't short every stock at its full size.`;
+}
+function renderRace(){
+  renderAlpaca();
+  try{ renderAlpView(); }catch(e){ console.error(e); }
+  try{ renderCongress(); }catch(e){ console.error(e); }
+  renderRaceInto({sum:"raceSum", when:"raceWhen", market:"raceMarket", chart:"raceChart", ctl:"raceCtl", table:"raceTable", about:"raceAbout"}, calls, false);
+  if (btData?.calls?.length && $("btPanel")){
+    $("btPanel").hidden = false;
+    renderRaceInto({sum:"btSum", when:"btWhen", market:"btMarket", chart:"btChart", ctl:"btCtl", table:"btTable", about:"btAbout"}, btData.calls || [], true);
+    const acc = MODELS.map(m => { const xs = (btData.calls || []).filter(c => !c.kind && c.m === m.key).map(c => grade(c, "day")).filter(g => g.state === "graded"); return xs.length ? `${m.label} ${xs.filter(g => g.ok).length} of ${xs.length} next-day calls right (${Math.round(xs.filter(g => g.ok).length / xs.length * 100)}%)` : null; }).filter(Boolean);
+    const cost = Object.entries(btData.costs || {}).map(([k, v]) => `${(MODELS.find(m => m.key === k) || {label:k}).label} $${v.toFixed(2)}`).join(", ");
+    $("btAcc").textContent = (acc.length ? acc.join(" · ") + ". " : "") + (cost ? `API cost of the backtest: ${cost}.` : "") + (btData.notes?.length ? ` ${btData.notes.length} model-day(s) failed and were skipped.` : "");
+  }
+}
+// ---------- Congress trades (data/congress.json, written by tracker/congress.mjs) ----------
+function renderCongress(){
+  const panel = $("cgPanel"), D = cgData;
+  if (!panel) return;
+  if (!D?.dates?.length){ panel.hidden = true; return; }
+  panel.hidden = false;
+  const live = cgRange === "live" && D.dates[D.dates.length - 1] >= D.countFrom;
+  let i0 = 0; if (live){ i0 = D.dates.findIndex(d => d >= D.countFrom); if (i0 > 0) i0--; }   // start from the close before Claude's first day
+  const series = [
+    {key:"pelosi", label:"Copy Pelosi", color:"--amber", w:2, sub:"Her reported buys, from the day after each report"},
+    {key:"house", label:"Copy the House", color:"--blue", w:2, sub:"Every member's reported buys"},
+    {key:"spy", label:"S&P 500", color:"--muted", w:1.25, sub:"Holding the index"},
+    {key:"qqq", label:"Nasdaq 100", color:"--fg", w:1, dash:true, sub:"Holding big tech (QQQ)"}
+  ].map(x => { const pts = (D.lines[x.key] || []).slice(i0), b = pts[0] || 1; return {...x, pts: pts.map(v => v / b * 100000)}; });
+  $("cgCtl").innerHTML = `<div class="seg race-seg" role="group" aria-label="Period" style="grid-template-columns:repeat(2,auto)">${[["all", `Since ${shortDate(D.from)}`], ["live", `Since ${shortDate(D.countFrom)} (Claude's start)`]].map(([k, l]) => `<button type="button" data-cg-range="${k}" class="${(k === "live") === live ? "on" : ""}"${k === "live" && D.dates[D.dates.length - 1] < D.countFrom ? " disabled" : ""}>${l}</button>`).join("")}</div>`;
+  $("cgSum").innerHTML = series.map(x => {
+    const v = x.pts[x.pts.length - 1] ?? 100000, chg = (v / 100000 - 1) * 100;
+    const held = x.key === "pelosi" ? ` · holding ${D.holdings.pelosi.length}` : x.key === "house" ? ` · holding ${D.holdings.houseCount}` : "";
+    return `<div class="race-tile"><span class="label"><i class="key" style="background:var(${x.color})"></i>${x.label}</span><span class="num ${cls(chg)}">${usd(v)}</span><span class="small"><span class="${cls(chg)}">${sgn(chg,"%")}</span> · ${x.sub}${held}</span></div>`;
+  }).join("");
+  const n = D.dates.length - i0;
+  $("cgWhen").textContent = `${n - 1} trading days, ${shortDate(D.dates[i0])} to ${shortDate(D.dates[D.dates.length - 1])}`;
+  drawCongress(series, D.dates.slice(i0));
+
+  // accuracy side by side: Congress trades graded with exactly the same rules as Claude's and the analysts' calls
+  const pc = (ok, n) => n ? `${Math.round(ok / n * 100)}% <span class="sub">(${ok.toLocaleString("en-US")} of ${n.toLocaleString("en-US")})</span>` : `<span class="sub">—</span>`;
+  const exs = v => v == null ? `<span class="sub">—</span>` : `<span class="${cls(v)}">${sgn(v, " pts")}</span>`;
+  const cg = (g, label) => `<tr><td>${label}</td>${["week", "month"].map(h => `<td class="num">${pc(g[h].ok, g[h].n)}</td>`).join("")}<td class="num">${exs(g.month.ex)}</td><td class="num">${exs(g.ex3.ex)}</td></tr>`;
+  const own = (list, label) => { const t = h => tally(list.filter(c => c.src !== "claude" || callH(c) === h), h); const w = t("week"), m = t("month"); return `<tr><td>${label}</td><td class="num">${pc(w.ok, w.n)}</td><td class="num">${pc(m.ok, m.n)}</td><td class="num sub">—</td><td class="num sub">—</td></tr>`; };
+  const G = D.grades;
+  $("cgTable").innerHTML = `<table class="race-tbl"><thead><tr><th>Calls graded right</th><th>Next week</th><th>Next month</th><th>Avg vs S&amp;P, 1 month</th><th>3 months</th></tr></thead><tbody>
+    ${cg(G.pelosi.Buy, "Pelosi buys")}${cg(G.pelosi.Sell, "Pelosi sales")}${cg(G.house.Buy, "House buys")}${cg(G.house.Sell, "House sales")}
+    ${MODELS.map(m => own(calls.filter(c => c.src === "claude" && !c.kind && !isPractice(c) && modelOf(c) === m.key), m.label)).join("")}
+    ${own(calls.filter(c => c.src === "analyst"), "Wall Street analysts")}</tbody></table>`;
+  $("cgNote").textContent = `A Buy is right when the stock beats the S&P 500 by more than 1 point in a week or 2 points in a month (a Sell when it trails by as much), the same rule as every call in Void. Members only report buys and sales, never Holds, so their calls are never right by doing nothing. "Avg vs S&P" is how far the stocks ran ahead of the index on average, counted from the trading day after each report.`;
+
+  const tr = (c, who) => `<tr>${who ? `<td>${esc(c.who)} <span class="sub">${esc(c.st || "")}</span></td>` : ""}<td>${esc(c.s)}</td><td class="${c.sig === "Buy" ? "up" : "down"}">${c.sig}${c.opt ? (c.sig === "Buy" ? " (calls)" : " (puts)") : ""}</td><td class="num">${esc(c.amt)}</td><td class="num">${shortDate(c.tdate)}</td><td class="num">${shortDate(c.filed)} <span class="sub">+${c.lag}d</span></td><td class="num">${c.now ? exs(c.now.ex) : `<span class="sub">—</span>`}</td></tr>`;
+  const head = who => `<thead><tr>${who ? "<th>Member</th>" : ""}<th>Stock</th><th>Trade</th><th>Amount</th><th>Traded</th><th>Reported</th><th>Since vs S&amp;P</th></tr></thead>`;
+  const L = D.leaders || [];
+  if ($("cgLists").dataset.v !== D.updated){   // only when new data arrives, so lists you've opened stay open while prices update
+  $("cgLists").dataset.v = D.updated;
+  $("cgLists").innerHTML = `
+    <details class="cg-more"><summary>Pelosi's latest reported trades</summary><div class="tbl-wrap"><table class="race-tbl">${head(false)}<tbody>${D.recent.pelosi.map(c => tr(c, false)).join("")}</tbody></table></div>
+      <div class="small">Pelosi's trades are her husband Paul's. Most buys are call options, bets that magnify a stock's move; Void copies them with plain shares. "Since vs S&amp;P" counts from the day after the report up to now.</div></details>
+    <details class="cg-more"><summary>Reported trades on your watchlist, last 90 days (${D.recent.watch.length})</summary>${D.recent.watch.length ? `<div class="tbl-wrap"><table class="race-tbl">${head(true)}<tbody>${D.recent.watch.map(c => tr(c, true)).join("")}</tbody></table></div>` : `<div class="small">None reported.</div>`}</details>
+    <details class="cg-more"><summary>Members with the best record (at least 20 graded buys)</summary><div class="tbl-wrap"><table class="race-tbl"><thead><tr><th>Member</th><th>Buys</th><th>Right after a month</th><th>Avg vs S&amp;P, 1 month</th></tr></thead><tbody>${L.map(x => `<tr><td>${esc(x.who)} <span class="sub">${esc(x.st)}</span></td><td class="num">${x.n}</td><td class="num">${pc(x.ok, x.n)}</td><td class="num">${exs(x.ex)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="small">Top ${L.length} of ${D.leadersCount} members with enough buys to judge${D.pelosiRank ? `; Pelosi ranks ${D.pelosiRank}` : ""}. With hundreds of members, some will look brilliant by luck alone, so a top spot here doesn't mean they'll keep winning.</div></details>`;
+  }
+  const T = D.trades, R = D.reports;
+  $("cgAbout").textContent = `From ${R.read.toLocaleString("en-US")} House trade reports filed since ${shortDate(D.from)} (${R.paper} scanned paper forms can't be read and are skipped; the Senate isn't included yet): ${T.n.toLocaleString("en-US")} trades by ${T.members} members in ${T.stocks.toLocaleString("en-US")} stocks. Members can take up to 45 days to report; the typical delay is ${T.medianLag} days, so copiers always buy late. Copying rules: buy at the close of the trading day after a report, equal amounts in every stock held, sell when the member reports a sale or after ${D.rules.holdDays} days without a new buy; costs ${D.rules.costPct}% per round trip. The Nasdaq 100 line shows what simply owning big tech did, since most of Congress's buys are tech. Updated every weekday evening.`;
+}
+function drawCongress(series, dates){
+  const cv = $("cgChart"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, Hh = cv.clientHeight;
+  if (!W) return;
+  if (cv.width !== W*dpr || cv.height !== Hh*dpr){ cv.width = W*dpr; cv.height = Hh*dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,Hh);
+  const css = getComputedStyle(document.documentElement), col = v => css.getPropertyValue(v).trim();
+  g.font = `11px ${col("--mono")}`; g.fillStyle = col("--muted");
+  const n = dates.length; if (n < 2){ g.fillText("Not enough trading days yet.", 8, Hh/2); return; }
+  const all = series.flatMap(x => x.pts); let lo = Math.min(...all), hi = Math.max(...all);
+  if (hi - lo < 200){ hi += 100; lo -= 100; }
+  const pad = (hi - lo) * .08; lo -= pad; hi += pad;
+  const padR = 80, padB = 18, x = i => i / (n - 1) * (W - padR), y = v => 6 + (1 - (v - lo) / (hi - lo)) * (Hh - 6 - padB);
+  g.strokeStyle = col("--line"); g.lineWidth = 1;
+  for (let i = 0; i <= 3; i++){ const v = lo + (hi - lo) * i / 3, yy = Math.round(y(v)) + .5; g.beginPath(); g.moveTo(0, yy); g.lineTo(W - padR, yy); g.stroke(); g.fillText("$" + Math.round(v).toLocaleString("en-US"), W - padR + 6, yy + 4); }
+  // date labels: years for the long view, months for the short one
+  const long = n > 300; let last = "";
+  dates.forEach((d, i) => { const k = long ? d.slice(0, 4) : d.slice(0, 7); if (k !== last){ if (last){ const t = long ? k : new Date(d + "T12:00:00Z").toLocaleDateString("en-US", {month:"short", timeZone:"UTC"}); g.fillText(t, Math.min(x(i) + 2, W - padR - 30), Hh - 4); g.strokeStyle = col("--line"); g.beginPath(); g.moveTo(Math.round(x(i)) + .5, 6); g.lineTo(Math.round(x(i)) + .5, Hh - padB); g.stroke(); } last = k; } });
+  g.setLineDash([4,4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(0, y(100000)); g.lineTo(W - padR, y(100000)); g.stroke(); g.setLineDash([]);
+  for (const s of [...series].reverse()){
+    g.strokeStyle = col(s.color); g.lineWidth = s.w; g.setLineDash(s.dash ? [5,3] : []); g.beginPath();
+    const step = Math.max(1, Math.floor(n / (W - padR)));   // about one point per pixel
+    for (let i = 0; i < n; i += step) i ? g.lineTo(x(i), y(s.pts[i])) : g.moveTo(x(i), y(s.pts[i]));
+    g.lineTo(x(n - 1), y(s.pts[n - 1])); g.stroke(); g.setLineDash([]);
+    g.fillStyle = col(s.color); g.beginPath(); g.arc(x(n - 1), y(s.pts[n - 1]), 3, 0, 7); g.fill();
+  }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-cg-range]"); if (!b) return;
+  cgRange = b.dataset.cgRange; store.set("cgRange", cgRange); renderCongress();
+});
+function renderRaceInto(ids, list, isBacktest){
+  if (!$(ids.sum)) return;
+  // controls: style switch and trading cost
+  $(ids.ctl).innerHTML = `<div class="seg race-seg" role="group" aria-label="Portfolio style">${STYLES.map(s => `<button type="button" data-style="${s.key}" class="${s.key === raceStyle ? "on" : ""}">${s.label}</button>`).join("")}</div>
+    <label class="small cost-ctl">Trading cost per round trip <input type="number" min="0" max="2" step="0.01" value="${raceCost}" data-cost aria-label="Trading cost per round trip, percent">%</label>`;
+  const R = raceFor(list, raceStyle);
+  const shown = MODELS.filter(m => !isBacktest || list.some(c => modelOf(c) === m.key));   // the backtest only replayed some models
+  for (const m of MODELS) if (!shown.includes(m)) delete R.lines[m.key];
+  const tiles = [...shown.map(m => ({key:m.key, label:m.label, color:m.color})), {key:"spy", label:"S&P 500", color:"--muted"}];
+  $(ids.sum).innerHTML = tiles.map(t => {
+    const run = R.runs[t.key], v = t.key === "spy" ? R.lines.spy[R.lines.spy.length - 1] : run.v, chg = (v / RACE_START - 1) * 100;
+    let sub;
+    if (t.key === "spy") sub = "Holding the index over the same periods";
+    else if (!run.points.length) sub = isBacktest && R.style.h === "week" ? "The backtest only made next-day calls" : "No calls for this style yet";
+    else { const st = run.st; sub = `before costs ${usd(run.vg)} · costs ${usd(run.costPaid)}` + (st.days ? ` · ${st.up} of ${st.days} ${R.style.h === "week" ? "weeks" : "days"} up · ${st.trades} trades` : "") + (st.cash ? ` · ${st.cash} in cash` : ""); }
+    return `<div class="race-tile"><span class="label"><i class="key" style="background:var(${t.color})"></i>${t.label}</span><span class="num ${cls(chg)}">${usd(v)}</span><span class="small"><span class="${cls(chg)}">${sgn(chg,"%")}</span> · ${sub}</span></div>`;
+  }).join("");
+  const unit = R.style.h === "week" ? "week" : "trading day";
+  $(ids.when).textContent = isBacktest ? (R.dates.length ? `${R.dates.length} replayed ${unit}s, ${shortDate(R.dates[0])} to ${shortDate(R.dates[R.dates.length - 1])}` : "")
+    : R.dates.length ? `${R.dates.length} ${unit}${R.dates.length > 1 ? "s" : ""} since ${shortDate(R.dates[0])}${R.pending ? " · latest still open" : ""}` : "Starts with the first calls";
+  // all styles at a glance, after costs
+  const rows = STYLES.map(s => { const r = raceFor(list, s.key); return `<tr${s.key === raceStyle ? ' class="sel"' : ""}><td>${s.label}</td>${shown.map(m => { const x = r.runs[m.key]; if (!x.points.length) return `<td class="num small">—</td>`; const c = (x.v / RACE_START - 1) * 100; return `<td class="num"><span class="${cls(c)}">${sgn(c,"%")}</span></td>`; }).join("")}<td class="num">${r.dates.length ? sgn((r.lines.spy[r.lines.spy.length - 1] / RACE_START - 1) * 100, "%") : "—"}</td></tr>`; }).join("");
+  $(ids.table).innerHTML = `<table class="race-tbl"><thead><tr><th>After costs</th>${shown.map(m => `<th>${m.label}</th>`).join("")}<th>S&amp;P 500</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $(ids.about).textContent = `${R.style.about} Costs: ${raceCost}% per round trip, charged only on positions that change. Each model starts with $100,000 of paper money.`;
+  const mk = MODELS.map(m => {
+    const xs = list.filter(c => c.src==="claude" && c.kind==="market" && !isPractice(c) && modelOf(c)===m.key).map(c => ({c, g: grade(c, "day")}));
+    const gr = xs.filter(x => x.g.state === "graded"), last = xs[xs.length - 1];
+    return xs.length ? `${m.label} ${gr.filter(x => x.g.ok).length} of ${gr.length} right` + (last ? ` (latest: ${last.c.sig}${last.c.conf != null ? `, ${last.c.conf}%` : ""})` : "") : null;
+  }).filter(Boolean);
+  $(ids.market).textContent = mk.length ? `S&P 500 up/down calls: ${mk.join(" · ")}.` : "";
+  drawRace(R.lines, R.dates.length, ids.chart);
+}
+// one listener for both panels' controls
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-style]"); if (!b) return;
+  raceStyle = b.dataset.style; store.set("raceStyle", raceStyle); renderRace();
+});
+document.addEventListener("change", e => {
+  if (!e.target.matches("[data-cost]")) return;
+  const v = Number(e.target.value); raceCost = isFinite(v) && v >= 0 ? Math.min(v, 2) : 0.05; store.set("raceCost", raceCost); renderRace();
+});
+function drawRace(lines, n, chartId = "raceChart"){
+  const cv = $(chartId), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, Hh = cv.clientHeight;
+  if (cv.width !== W*dpr || cv.height !== Hh*dpr){ cv.width = W*dpr; cv.height = Hh*dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,Hh);
+  const css = getComputedStyle(document.documentElement), col = v => css.getPropertyValue(v).trim();
+  g.font = `11px ${col("--mono")}`; g.fillStyle = col("--muted");
+  if (n < 1){ g.fillText("The race starts once the first calls are in.", 8, Hh/2); return; }
+  const all = Object.values(lines).flat(); let lo = Math.min(...all), hi = Math.max(...all);
+  if (hi - lo < 200){ hi += 100; lo -= 100; }
+  const pad = (hi - lo) * .1; lo -= pad; hi += pad;
+  const padR = 76, x = i => i / Math.max(1, n) * (W - padR), y = v => 8 + (1 - (v - lo) / (hi - lo)) * (Hh - 24);
+  g.strokeStyle = col("--line"); g.lineWidth = 1;
+  for (let i = 0; i <= 3; i++){ const v = lo + (hi - lo) * i / 3, yy = Math.round(y(v)) + .5; g.beginPath(); g.moveTo(0, yy); g.lineTo(W - padR, yy); g.stroke(); g.fillText("$" + Math.round(v).toLocaleString("en-US"), W - padR + 6, yy + 4); }
+  g.setLineDash([4,4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(0, y(RACE_START)); g.lineTo(W - padR, y(RACE_START)); g.stroke(); g.setLineDash([]);
+  for (const [k, c] of [["spy","--muted"], ...MODELS.map(m => [m.key, m.color])]){
+    const pts = lines[k]; if (!pts) continue;
+    g.strokeStyle = col(c); g.lineWidth = k === "spy" ? 1.25 : 2; g.beginPath();
+    pts.forEach((v, i) => i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))); g.stroke();
+    g.fillStyle = col(c); g.beginPath(); g.arc(x(pts.length - 1), y(pts[pts.length - 1]), 3, 0, 7); g.fill();
+  }
+}
+
+// ---------- chart ----------
+function drawChart(){
+  const cv = $("chart"), dpr = window.devicePixelRatio||1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr || cv.height !== H*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  const pts = ticks[sel] || []; const q = Q[sel] || {};
+  g.font = `11px ${col("--mono")}`; g.fillStyle = col("--muted");
+  if (pts.length < 2){ g.fillText(q.c ? "Waiting for the next trade…" : "Loading…", 8, H/2); return; }
+  const padR = 60, padT = 10, padB = 22;
+  let lo = Math.min(...pts.map(p=>p[1])), hi = Math.max(...pts.map(p=>p[1]));
+  if (q.pc){ lo = Math.min(lo,q.pc); hi = Math.max(hi,q.pc); }
+  if (hi-lo < 1e-6){ hi += .5; lo -= .5; }
+  const pad = (hi-lo)*.08; lo -= pad; hi += pad;
+  const t0 = pts[0][0], t1 = Math.max(pts[pts.length-1][0], t0+1);
+  const x = t => (t-t0)/(t1-t0)*(W-padR), y = p => padT + (1-(p-lo)/(hi-lo))*(H-padT-padB);
+  // grid + price labels
+  g.strokeStyle = col("--line"); g.lineWidth = 1;
+  for (let i=0;i<=4;i++){ const v = lo + (hi-lo)*i/4, yy = Math.round(y(v))+.5;
+    g.beginPath(); g.moveTo(0,yy); g.lineTo(W-padR,yy); g.stroke(); g.fillText(fmt(v), W-padR+8, yy+4); }
+  // time labels
+  g.fillText(new Date(t0).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}), 0, H-6);
+  const tl = new Date(t1).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  g.fillText(tl, W-padR-g.measureText(tl).width, H-6);
+  // prev close
+  if (q.pc){ g.setLineDash([4,4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(0,y(q.pc)); g.lineTo(W-padR,y(q.pc)); g.stroke(); g.setLineDash([]); }
+  const c = (q.d ?? 0) >= 0 ? col("--up") : col("--down");
+  // area
+  const grad = g.createLinearGradient(0,padT,0,H-padB);
+  grad.addColorStop(0, c+"33"); grad.addColorStop(1, c+"00");
+  g.beginPath(); g.moveTo(x(pts[0][0]), y(pts[0][1]));
+  for (const p of pts) g.lineTo(x(p[0]), y(p[1]));
+  g.lineTo(x(pts[pts.length-1][0]), H-padB); g.lineTo(x(pts[0][0]), H-padB); g.closePath();
+  g.fillStyle = grad; g.fill();
+  // line
+  g.beginPath(); pts.forEach((p,i)=> i? g.lineTo(x(p[0]),y(p[1])) : g.moveTo(x(p[0]),y(p[1])));
+  g.strokeStyle = c; g.lineWidth = 1.75; g.lineJoin = "round"; g.stroke();
+  // endpoint
+  const lp = pts[pts.length-1]; g.fillStyle = c; g.beginPath(); g.arc(x(lp[0]), y(lp[1]), 3.5, 0, 7); g.fill();
+}
+
+// ---------- actions ----------
+function select(s){ sel = s; store.set("sel", s); renderList(); renderDetail(); drawChart(); }
+function place(){
+  const q = Q[sel]; const qty = Math.floor(+$("qty").value||0); const msg = $("tMsg");
+  if (!q?.c || qty<=0) return;
+  const px = q.c, total = px*qty;
+  if (side==="buy"){
+    if (total > pf.cash + 1e-9){ msg.className="msg down"; msg.textContent = `Not enough cash. You can afford ${Math.floor(pf.cash/px)} shares.`; return; }
+    const p = pf.pos[sel] || {qty:0, avg:0};
+    p.avg = (p.avg*p.qty + total)/(p.qty+qty); p.qty += qty; pf.pos[sel] = p; pf.cash -= total;
+  } else {
+    const p = pf.pos[sel];
+    if (!p || p.qty < qty){ msg.className="msg down"; msg.textContent = `You own ${p?.qty||0} shares of ${sel}.`; return; }
+    p.qty -= qty; pf.cash += total; if (p.qty===0) delete pf.pos[sel];
+  }
+  pf.hist.push({s:sel, side, qty, px, t:Date.now()}); if (pf.hist.length>200) pf.hist.shift();
+  store.set("pf", pf);
+  msg.className = "msg up"; msg.textContent = `${side==="buy"?"Bought":"Sold"} ${qty} ${sel} at ${usd(px)}.`;
+  renderPf(); renderTicket();
+}
+async function addSymbol(raw){
+  const s = raw.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,"");
+  if (!s) return;
+  if (watch.includes(s)){ select(s); return; }
+  const inp = $("addInput"); inp.disabled = true;
+  try{
+    const q = await api(`/quote?symbol=${encodeURIComponent(s)}`);
+    if (!q || !q.c){ inp.value = ""; inp.placeholder = `${s} not found`; return; }
+    watch.push(s); store.set("watch", watch); saveCloudWatch(); inp.value = ""; inp.placeholder = "Add symbol, e.g. AMD";
+    renderList(); sub(s); loadName(s); loadRec(s); loadInsider(s); await loadQuote(s); select(s);
+  }catch{ inp.placeholder = "Could not reach Finnhub"; }
+  finally{ inp.disabled = false; inp.focus(); }
+}
+function removeSymbol(s){
+  watch = watch.filter(x=>x!==s); store.set("watch", watch); saveCloudWatch(); unsub(s);
+  if (sel===s) sel = watch[0] || "AAPL";
+  renderList(); renderDetail(); drawChart();
+}
+function authFail(){
+  store.set("key",""); key=""; try{ ws&&ws.close(); }catch{}
+  showSetup("Finnhub rejected that key. Check it and try again.");
+}
+
+// ---------- cloud tracker (GitHub) ----------
+function gh(path, opts = {}){
+  return fetch(`https://api.github.com/repos/${cloudRepo}/contents/${path}`, {
+    cache: "no-store", ...opts,
+    headers: { Authorization: `Bearer ${cloudToken}`, "X-GitHub-Api-Version": "2022-11-28", Accept: opts.raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", ...(opts.headers || {}) }
+  });
+}
+const ghError = r => r.status === 401 ? "GitHub rejected the token. Check it in Settings." : r.status === 404 ? "GitHub can't find that repository, or the token can't see it." : r.status === 403 ? "The token doesn't have permission for this repository." : `GitHub error ${r.status}.`;
+function cloudSummary(){
+  const lr = cloudState?.lastRun; if (!lr) return "";
+  const when = new Date(lr.at).toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
+  return `Cloud tracker last ran ${when}. ${lr.claude?.status || ""}`.trim();
+}
+async function loadCloud(){
+  if (!cloudMode) return;
+  try{
+    const r = await gh("data/state.json", {raw: true});
+    if (r.status === 404){
+      const repo = await fetch(`https://api.github.com/repos/${cloudRepo}`, {headers:{Authorization:`Bearer ${cloudToken}`}, cache:"no-store"});
+      cloudStatus = repo.ok ? "The cloud tracker hasn't run yet. Its first run is after today's close, or start it from the repository's Actions tab." : ghError(repo);
+      renderClaude(); return;
+    }
+    if (!r.ok){ cloudStatus = ghError(r); renderClaude(); return; }
+    cloudState = await r.json();
+    try{ const b = await gh("data/backtest.json", {raw: true}); if (b.ok) btData = await b.json(); }catch{}
+    try{ const b = await gh("data/congress.json", {raw: true}); if (b.ok) cgData = await b.json(); }catch{}
+    calls = Array.isArray(cloudState.calls) ? cloudState.calls : [];
+    for (const sym in cloudState.closes || {}) closes[sym] = cloudState.closes[sym];
+    for (const sym in cloudState.insiders || {}) if (insiders[sym] == null) insiders[sym] = cloudState.insiders[sym];
+    cloudStatus = cloudSummary();
+  }catch{ cloudStatus = "Could not reach GitHub to load the cloud tracker."; }
+  renderList(); renderClaude(); renderTrack(); renderMood();
+}
+// Adopt the cloud watchlist at startup; if the cloud has none yet, upload this one
+async function loadCloudWatch(){
+  if (!cloudMode) return;
+  try{
+    const r = await gh("data/watchlist.json", {raw: true});
+    if (r.status === 404){ await saveCloudWatch(); return; }
+    if (!r.ok) return;
+    const list = await r.json();
+    if (Array.isArray(list) && list.length){ watch = list.map(x => String(x).toUpperCase()); store.set("watch", watch); if (!watch.includes(sel)) sel = watch[0]; }
+  }catch{}
+}
+let watchSaving = Promise.resolve();
+function saveCloudWatch(){
+  if (!cloudMode) return Promise.resolve();
+  watchSaving = watchSaving.then(async () => {
+    try{
+      let sha;
+      const cur = await gh("data/watchlist.json");
+      if (cur.ok) sha = (await cur.json()).sha;
+      else if (cur.status !== 404) throw new Error(ghError(cur));
+      const content = btoa(JSON.stringify(watch, null, 2) + "\n");
+      const put = await gh("data/watchlist.json", { method: "PUT", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ message: "Update watchlist from Void", content, ...(sha ? {sha} : {}) }) });
+      if (!put.ok) throw new Error(ghError(put));
+      cloudStatus = cloudSummary() + " Watchlist saved to the cloud tracker.";
+    }catch(e){ cloudStatus = "Couldn't save the watchlist to GitHub: " + (e.message || "network error"); }
+    renderClaude();
+  });
+  return watchSaving;
+}
+
+// ---------- boot ----------
+function showSetup(err=""){ $("app").hidden = true; $("setup").hidden = false; $("keyMsg").textContent = err; clearInterval(pollTimer); }
+async function start(){
+  $("setup").hidden = true; $("app").hidden = false;
+  if (cloudMode){ await loadCloudWatch(); loadCloud(); setInterval(loadCloud, 10*60*1000); }
+  renderList(); renderDetail(); renderPf();
+  try{ await loadQuote(sel); }catch(e){ if (e.message==="auth") return authFail(); }
+  watch.forEach(loadName);
+  watch.forEach(loadRec);
+  watch.forEach(loadInsider);
+  renderClaude(); renderTrack(); renderMood();
+  closesLoading = true; fetchCloses().finally(async () => { closesLoading = false; await loadFear(); renderMood(); askClaude(); });
+  connect(); pollAll();
+  clearInterval(pollTimer); pollTimer = setInterval(pollAll, 30000);
+  setInterval(setConn, 5000);
+  // Every 6 hours: pull the latest daily closes, then let Claude make a new day's picks if due
+  setInterval(() => { if (closesLoading) return; closesLoading = true; fetchCloses().finally(async () => { closesLoading = false; await loadFear(); renderMood(); askClaude(); }); }, 6*60*60*1000);
+}
+
+$("keyForm").addEventListener("submit", e => { e.preventDefault(); key = $("keyInput").value.trim(); if(!key) return; store.set("key", key); start(); });
+function toggleSettings(open){
+  $("settings").hidden = !open; $("openSettings").setAttribute("aria-expanded", open);
+  if (open){ $("setFinnhub").value = key; $("setAv").value = avKey; $("setAnthropic").value = aKey; $("setRepo").value = cloudRepo; $("setGhToken").value = cloudToken; for (const m of MODELS){ $("alpId_" + m.key).value = alpKeys[m.key]?.id || ""; $("alpSec_" + m.key).value = alpKeys[m.key]?.secret || ""; } $("setFinnhub").focus(); }
+}
+$("openSettings").onclick = () => toggleSettings($("settings").hidden);
+$("closeSettings").onclick = () => toggleSettings(false);
+$("settingsForm").addEventListener("submit", e => {
+  e.preventDefault();
+  store.set("key", $("setFinnhub").value.trim()); store.set("avkey", $("setAv").value.trim()); store.set("akey", $("setAnthropic").value.trim());
+  store.set("cloudRepo", $("setRepo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "")); store.set("cloudToken", $("setGhToken").value.trim());
+  store.set("alpacaKeys", Object.fromEntries(MODELS.map(m => [m.key, {id: $("alpId_" + m.key).value.trim(), secret: $("alpSec_" + m.key).value.trim()}]).filter(([, k]) => k.id && k.secret)));
+  location.reload();
+});
+$("horizon").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; horizon = b.dataset.h; store.set("horizon", horizon); renderTrack(); renderClaude(); renderList(); });
+$("addForm").addEventListener("submit", e => { e.preventDefault(); addSymbol($("addInput").value); });
+// On a phone the details sit below the watchlist: jump to them after picking a stock, and back again
+const narrow = () => matchMedia("(max-width:820px)").matches;
+$("list").addEventListener("click", e => { const rm = e.target.closest("[data-rm]"); if (rm){ e.stopPropagation(); removeSymbol(rm.dataset.rm); return; } const r = e.target.closest(".row"); if (r){ select(r.dataset.s); if (narrow()) $("detailPanel").scrollIntoView({behavior:"smooth", block:"start"}); } });
+$("backToList").addEventListener("click", () => { const row = document.querySelector(`#list .row[data-s="${sel}"]`) || $("list"); row.scrollIntoView({behavior:"smooth", block:"center"}); });
+$("list").addEventListener("keydown", e => { const r = e.target.closest(".row"); if (r && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(r.dataset.s); } });
+$("pos").addEventListener("click", e => { const r = e.target.closest("tr"); if (r) select(r.dataset.s); });
+$("sideBuy").onclick = () => { side="buy"; $("sideBuy").classList.add("on"); $("sideSell").classList.remove("on"); $("tMsg").textContent=""; renderTicket(); };
+$("sideSell").onclick = () => { side="sell"; $("sideSell").classList.add("on"); $("sideBuy").classList.remove("on"); $("tMsg").textContent=""; renderTicket(); };
+$("qty").addEventListener("input", renderTicket);
+$("place").onclick = place;
+let resetArmed = false;
+$("resetPf").onclick = () => {
+  if (!resetArmed){ resetArmed = true; $("resetPf").textContent = "Click again to confirm"; setTimeout(()=>{ resetArmed=false; $("resetPf").textContent="Reset account"; }, 3000); return; }
+  pf = {cash:START_CASH, pos:{}, hist:[]}; store.set("pf", pf); resetArmed=false; $("resetPf").textContent="Reset account"; renderPf(); renderTicket();
+};
+window.addEventListener("resize", () => { drawChart(); renderRace(); });
+// ---------- appearance: Day / Night / Match Windows ----------
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(t){
+  if (!["light", "dark", "system"].includes(t)) t = "system";
+  if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+  const night = t === "dark" || (t === "system" && darkQuery.matches);
+  $("themeColor")?.setAttribute("content", night ? "#0d0f11" : "#14171a");
+  document.querySelectorAll("[data-theme-pick]").forEach(b => { const on = b.dataset.themePick === t; b.classList.toggle("on", on); b.setAttribute("aria-checked", on); });
+  // charts and the analyst bar are drawn with the current colours, so redraw them
+  try{ drawChart(); renderRace(); renderRec(); drawAlpChart(); }catch{}
+}
+$("themeSeg").addEventListener("click", e => { const b = e.target.closest("[data-theme-pick]"); if (!b) return; store.set("theme", b.dataset.themePick); applyTheme(b.dataset.themePick); });
+darkQuery.addEventListener?.("change", () => applyTheme(store.get("theme", "system")));
+applyTheme(store.get("theme", "system"));
+
+// ---------- app icon ----------
+// "installed": part of the app's installation files, so it can also be the taskbar icon right away.
+// The newer ones arrive through the self-update below and work everywhere in the app.
+const APP_ICONS = [
+  {id:"planet", label:"Planet", installed:true}, {id:"cube", label:"Cube", installed:true}, {id:"eclipse", label:"Eclipse", installed:true},
+  {id:"infinity", label:"Infinity", installed:true}, {id:"portal", label:"Portal", installed:true},
+  {id:"halo", label:"Halo"}, {id:"rift", label:"Rift"}, {id:"vortex", label:"Vortex"}
+];
+const ICON_SIZES = [16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 1024];
+// Image files that came after the installation files: fetched from GitHub into the saved copy (see syncAssets)
+const LATER_ASSETS = APP_ICONS.flatMap(i => (i.installed ? [384, 1024] : ICON_SIZES).map(n => `icons/${i.id}-${n}.png`));
+// Show an image; if it isn't there (launcher serving an older folder, or not downloaded yet), use the saved copy, then a fallback
+function setImg(img, path, fallback){
+  img.onerror = async () => {
+    img.onerror = () => { img.onerror = null; if (fallback) img.src = fallback; };
+    try{ const r = await savedCopy(path); if (r){ img.src = URL.createObjectURL(await r.blob()); return; } }catch{}
+    img.onerror();
+  };
+  img.src = path;
+}
+// The big symbol: the file made closest to its size on screen, so the browser barely scales it (scaling blurs the glow)
+function heroPath(id){
+  const need = ($("heroIcon").clientWidth || 180) * (window.devicePixelRatio || 1);
+  const sizes = [128, 192, 256, 384, 512, 1024];
+  return `icons/${id}-${sizes.find(n => n >= need) || 1024}.png`;
+}
+let currentIcon = "planet";
+function applyIcon(id){
+  if (!APP_ICONS.some(i => i.id === id)) id = "planet";
+  currentIcon = id;
+  $("favicon").href = `icons/${id}-256.png`;
+  $("touchicon").href = `icons/${id}-256.png`;
+  setImg($("heroIcon"), heroPath(id), APP_ICONS.find(i => i.id === id)?.installed ? `icons/${id}-512.png` : "icons/planet-512.png");   // the big symbol at the top follows the chosen icon
+  $("manifestLink").href = `manifest.webmanifest?icon=${id}`;   // the service worker builds a manifest with this icon
+  document.querySelectorAll(".icon-opt").forEach(b => { const on = b.dataset.icon === id; b.classList.toggle("on", on); b.setAttribute("aria-checked", on); });
+  return id;
+}
+$("iconGrid").innerHTML = APP_ICONS.map(i => `<button type="button" class="icon-opt" role="radio" data-icon="${i.id}"><img alt="" data-src="icons/${i.id}-128.png">${i.label}</button>`).join("");
+const loadIconGrid = () => document.querySelectorAll("#iconGrid img[data-src]").forEach(img => setImg(img, img.dataset.src));
+loadIconGrid();
+window.addEventListener("resize", () => { const want = heroPath(currentIcon); if (!$("heroIcon").src.endsWith(want) && !$("heroIcon").src.startsWith("blob:")) applyIcon(currentIcon); });
+$("iconGrid").addEventListener("click", e => {
+  const b = e.target.closest(".icon-opt"); if (!b) return;
+  const id = applyIcon(b.dataset.icon); store.set("icon", id);
+  const ic = APP_ICONS.find(i => i.id === id);
+  $("iconMsg").textContent = ic.installed
+    ? `Icon set to ${ic.label}. The window icon and the symbol at the top have changed. The taskbar icon follows the next time Brave checks the app; to apply it now, reinstall Void (your data stays).`
+    : `Icon set to ${ic.label}. The window icon and the symbol at the top have changed. ${ic.label} is newer than your installation files, so the taskbar keeps Planet for now; it can follow after the next time Void is installed from the latest files.`;
+});
+applyIcon(store.get("icon", "planet"));
+
+// ---------- set up a phone: a QR code with a link that carries the keys ----------
+const phoneUrlDefault = () => { const owner = (store.get("cloudRepo", "") || "").split("/")[0]; return owner ? `https://${owner.toLowerCase()}.github.io/void-app/` : ""; };
+$("phoneUrl").value = store.get("phoneUrl", "") || phoneUrlDefault();
+let phoneQrTimer = null;
+$("phoneQrBtn").addEventListener("click", () => {
+  const box = $("phoneQr");
+  if (!box.hidden){ box.hidden = true; box.innerHTML = ""; $("phoneQrBtn").textContent = "Show setup code"; return; }
+  let base = $("phoneUrl").value.trim(); if (!/^https:\/\//.test(base)){ $("phoneMsg").textContent = "Enter the phone app's address first (it starts with https://)."; return; }
+  if (!base.endsWith("/") && !/\.html$/.test(base)) base += "/";
+  store.set("phoneUrl", base);
+  const data = {v: 1};
+  for (const k of ["key", "avkey", "cloudRepo", "cloudToken", "alpacaKeys", "icon", "theme"]){ const v = store.get(k, null); if (v != null && v !== "" && !(typeof v === "object" && !Object.keys(v).length)) data[k] = v; }
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+  const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const qr = qrcode(0, "L"); qr.addData(base + "#setup=" + b64, "Byte"); qr.make();
+  box.innerHTML = qr.createSvgTag({cellSize: 4, margin: 2, scalable: true});
+  const svg = box.querySelector("svg"); svg.style.width = "min(320px, 100%)"; svg.style.height = "auto"; svg.style.display = "block";
+  box.hidden = false; $("phoneQrBtn").textContent = "Hide setup code";
+  clearTimeout(phoneQrTimer); phoneQrTimer = setTimeout(() => { box.hidden = true; box.innerHTML = ""; $("phoneQrBtn").textContent = "Show setup code"; }, 120000);
+});
+
+// ---------- move data between copies of Void ----------
+function exportData(){
+  const o = {};
+  try{ for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (k && k.startsWith("ticker:")) o[k] = localStorage.getItem(k); } }catch{}
+  return JSON.stringify({void: 1, data: o});
+}
+function importData(txt, msgEl){
+  try{
+    const parsed = JSON.parse(txt.trim());
+    const o = parsed && parsed.data;
+    if (!o || typeof o !== "object") throw 0;
+    let n = 0;
+    for (const k in o) if (k.startsWith("ticker:") && typeof o[k] === "string"){ localStorage.setItem(k, o[k]); n++; }
+    if (!n) throw 0;
+    msgEl.className = "small up"; msgEl.textContent = "Loaded. Reopening Void…";
+    setTimeout(() => location.reload(), 600);
+  }catch{
+    msgEl.className = "small down"; msgEl.textContent = "That doesn't look like Void data. Copy it again from the other copy's Settings.";
+  }
+}
+$("moveCopy").onclick = async () => {
+  const t = exportData(); const out = $("moveOut"); out.value = t;
+  try{ await navigator.clipboard.writeText(t); $("moveCopyMsg").textContent = "Copied. Paste it into the other copy of Void. It includes your API keys, so don't paste it anywhere else."; }
+  catch{ out.focus(); out.select(); $("moveCopyMsg").textContent = "Selected. Press Ctrl+C to copy it. It includes your API keys, so only paste it into Void."; }
+};
+$("moveLoad").onclick = () => importData($("moveIn").value, $("moveLoadMsg"));
+$("moveLoad2").onclick = () => importData($("moveIn2").value, $("moveLoadMsg2"));
+
+// ---------- self-update from GitHub (installed app + cloud tracker only) ----------
+// The offline helper (sw.js) version this page expects. When sw.js changes, bump CACHE there and this together.
+const SW_CACHE = "void-app-v3";
+// Void opens from a copy saved by its service worker. When the repository's app/void.html differs
+// from that copy, download it into the copy and offer to reopen, so the launcher isn't needed for updates.
+async function gitBlobSha(buf){
+  const head = new TextEncoder().encode(`blob ${buf.byteLength}\0`), all = new Uint8Array(head.length + buf.byteLength);
+  all.set(head); all.set(new Uint8Array(buf), head.length);
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-1", all))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function savedCopy(path){
+  const url = new URL(path, location.href).href;
+  for (const k of await caches.keys()) if (k.startsWith("void-app")){ const r = await (await caches.open(k)).match(url, {ignoreSearch:true}); if (r) return r; }
+  return null;
+}
+let updateTimer = null;
+// Is the launcher (Start Void.bat) running? It answers unknown paths with 404; without it, the
+// offline helper answers with its saved copy of the page instead.
+async function launcherRunning(){
+  try{ const r = await fetch(`__launcher_check_${Date.now()}`, {cache: "no-store"}); return r.status === 404; }catch{ return false; }
+}
+const setUpdateStatus = t => { const el = $("updateStatus"); if (el) el.textContent = t; };
+const HOSTED = location.protocol === "https:";   // the phone app on GitHub Pages; the PC app runs on http://localhost
+async function checkForUpdate(){
+  if (HOSTED) return setUpdateStatus("This copy loads the newest version from the web each time it opens.");
+  if (!location.protocol.startsWith("http")) return setUpdateStatus("Updates only work in the installed app (opened from the shortcut), not from the file.");
+  if (!cloudMode) return setUpdateStatus("Connect the cloud tracker below to get automatic updates.");
+  if (!("caches" in window) || !crypto?.subtle) return setUpdateStatus("This browser can't update Void automatically.");
+  setUpdateStatus("Checking…");
+  try{
+    // The installation files can only change through the launcher; just tell the owner when they did
+    const meta = async path => { const r = await gh(`app/${path}`); return r.ok ? (await r.json()).sha : null; };
+    const remote = await meta("void.html"); if (!remote) return setUpdateStatus("Couldn't read the latest version from GitHub (check the token).");
+    const local = await savedCopy("void.html");
+    const localSha = local ? await gitBlobSha(await local.arrayBuffer()) : null;
+    const keys = (await caches.keys()).filter(k => k.startsWith("void-app"));
+    const detail = `(your copy ${localSha ? localSha.slice(0, 7) : "missing"}, GitHub ${remote.slice(0, 7)}, page ${location.pathname}, saved copies ${keys.join("/") || "none"}${(await launcherRunning()) ? ", launcher running" : ""})`;
+    if (localSha === remote) return setUpdateStatus("Up to date. " + detail);
+    const r = await gh("app/void.html", {raw: true}); if (!r.ok) return setUpdateStatus(`Download failed (GitHub error ${r.status}).`);
+    const html = await r.arrayBuffer();
+    if (await gitBlobSha(html) !== remote) return setUpdateStatus("The download was incomplete; try again in a minute.");
+    const url = new URL("void.html", location.href).href;
+    for (const k of await caches.keys()) if (k.startsWith("void-app")) await (await caches.open(k)).put(url, new Response(html, {headers: {"Content-Type": "text/html; charset=utf-8"}}));
+    // Needs the launcher once if the new page expects a newer offline helper, or the manifest (icons) changed
+    const expects = /const SW_CACHE = "([^"]+)"/.exec(new TextDecoder().decode(html))?.[1];
+    let needsLauncher = !!expects && !(await caches.keys()).includes(expects);
+    const [ms, ml] = await Promise.all([meta("manifest.webmanifest"), savedCopy("manifest.webmanifest")]);
+    if (ms && ml && await gitBlobSha(await ml.arrayBuffer()) !== ms) needsLauncher = true;
+    const launcher = await launcherRunning();
+    $("updateMsg").textContent = needsLauncher
+      ? "Void has been updated. This update also changes the app's installation files, so run Start Void.bat once and then reopen Void."
+      : launcher
+        ? "Void has been updated, but the launcher (Start Void.bat) is still running and makes Void use the files in your folder. Close the launcher window, then reopen Void."
+        : "Void has been updated. Reopen it to use the new version.";
+    $("updateReload").hidden = launcher && !needsLauncher;
+    $("updateBar").hidden = false;
+    setUpdateStatus("Update downloaded. Reopen Void to use it. " + detail);
+  }catch(e){ setUpdateStatus("Couldn't check: " + (e?.message || "offline or GitHub unreachable") + "."); }
+}
+// New image files (icons added after installation) can't come through the launcher's folder, so fetch them from
+// GitHub into the saved copy once. The offline helper then serves them like the original files.
+let assetsSyncing = false;
+async function syncAssets(){
+  if (assetsSyncing || HOSTED || !location.protocol.startsWith("http") || !cloudMode || !("caches" in window)) return;
+  assetsSyncing = true;
+  try{
+    const missing = [];
+    for (const path of LATER_ASSETS) if (!(await savedCopy(path))) missing.push(path);
+    let added = 0;
+    for (let i = 0; i < missing.length; i += 4){
+      await Promise.all(missing.slice(i, i + 4).map(async path => {
+        try{
+          const r = await gh(`app/${path}`, {raw: true}); if (!r.ok) return;
+          const buf = await r.arrayBuffer(), url = new URL(path, location.href).href;
+          for (const k of await caches.keys()) if (k.startsWith("void-app")) await (await caches.open(k)).put(url, new Response(buf, {headers: {"Content-Type": "image/png"}}));
+          added++;
+        }catch{}
+      }));
+    }
+    if (added){ applyIcon(currentIcon); loadIconGrid(); }
+  }finally{ assetsSyncing = false; }
+}
+$("updateReload").onclick = () => location.reload();
+$("updateLater").onclick = () => { $("updateBar").hidden = true; };
+$("checkUpdate").onclick = () => checkForUpdate();
+if (location.protocol.startsWith("http")){
+  setTimeout(() => checkForUpdate().finally(syncAssets), 5000);
+  updateTimer = setInterval(checkForUpdate, 6 * 60 * 60 * 1000);
+}
+
+// Installed-app support: keeps a copy so Void opens even when the launcher isn't running
+if (location.protocol.startsWith("http") && "serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+key ? start() : showSetup();
+setView(store.get("view", "market"));
+})();
+</script>
+</body>
+</html>
